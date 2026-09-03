@@ -1,7 +1,10 @@
 namespace OtHoneypot.Core.Interfaces;
 public interface IDataService
 {
-    Task GenerateDataAsync(CancellationToken cancellationToken);
-
-    List<IData> GetGeneratedDataAsync();
+    /// <summary>
+    /// Gets the generated data.
+    /// </summary>
+    /// <returns>List of generated data items</returns>
+    List<IData> GetGeneratedData(List<int> dataTemplateIds);
+    List<IData> GetGeneratedData(List<string> dataTemplateNames);
 }

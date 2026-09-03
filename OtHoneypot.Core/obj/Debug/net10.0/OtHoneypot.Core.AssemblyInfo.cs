@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("OtHoneypot.Core")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2734f12e50067f32bc77219dd3428312dbc58b4b")]
 [assembly: System.Reflection.AssemblyProductAttribute("OtHoneypot.Core")]
 [assembly: System.Reflection.AssemblyTitleAttribute("OtHoneypot.Core")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
