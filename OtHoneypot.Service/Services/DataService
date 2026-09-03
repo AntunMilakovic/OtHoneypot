@@ -1,0 +1,59 @@
+using OtHoneypot.Core.Interfaces;
+
+namespace OtHoneypot.Core.Data;
+
+public class DataService : IDataService
+{
+    private readonly List<Data> _generatedData;
+
+    private object _lock = new object();
+
+private IDataTemplate _dataTemplate;
+    public DataService(List<Data> dataTemplates)
+    {
+        _generatedData = new List<Data>();
+    }
+
+    /// <summary>
+    /// Refreshes the generated data based on the data template's refresh rate and generates new values within the specified min and max range.
+    /// </summary>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public async Task GenerateDataAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var dataToRefresh = GetDataToBeRefreshed();
+            foreach (var data in dataToRefresh)
+            {
+                data.Value = _dataTemplate.MinValue + Random.Shared.NextSingle() * (_dataTemplate.MaxValue - _dataTemplate.MinValue);
+                data.Timestamp = DateTime.UtcNow;
+            }
+
+            // Simulate some delay between data generation
+            await Task.Delay(1000, cancellationToken);
+        }
+    }
+
+    List<Data> GetDataToBeRefreshed()
+    {
+        var dataToRefresh = new List<Data>();
+        lock (_lock)
+        {
+            foreach (var data in _generatedData)
+            {
+                if (data.Timestamp.Add(data.RefreshRate) <= DateTime.UtcNow)
+                    dataToRefresh.Add(data);
+            }
+        }
+        return dataToRefresh;
+    }
+
+    void ReplaceGeneratedData(List<Data> newData)
+    {
+        lock (_lock)
+        {
+            
+        }
+    }
+}

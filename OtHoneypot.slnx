@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="OtHoneypot.Core/OtHoneypot.Core.csproj" />
+  <Project Path="OtHoneypot.Service/OtHoneypot.Service.csproj" />
+</Solution>
