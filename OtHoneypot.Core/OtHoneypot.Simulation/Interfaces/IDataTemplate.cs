@@ -1,3 +1,5 @@
+using OtHoneypot.Core.Data;
+
 namespace OtHoneypot.Core.Interfaces;
 
 public interface IDataTemplate
@@ -6,11 +8,10 @@ public interface IDataTemplate
     string Name { get; set; }
     string Description { get; set; }
     string DataType { get; set; }
-    float MinValue { get; set; }
-    float MaxValue { get; set; }
-
+    
     /// <summary>
-    /// Gets or sets the refresh rate in seconds for the data template.
+    /// SimulationType property to specify the type of simulation for the data template.
+    /// It can simulate data changes based on the specified simulation type (e.g., Static, Dynamic, etc.).
     /// </summary>
-    int RefreshRate { get; set; }    
+    Simulation Simulation { get; set; } 
 }

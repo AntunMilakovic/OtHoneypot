@@ -1,8 +1,12 @@
+using OtHoneypot.Core.Protocols;
+
 namespace OtHoneypot.Core.Interfaces;
+
 public interface IProtocolModule
 {
-    string ProtocolName { get; }
 
+    string Name { get; }
+    ProtocolType Type { get; }
     Task StartAsync(CancellationToken cancellationToken);
     Task StopAsync(CancellationToken cancellationToken);
 }

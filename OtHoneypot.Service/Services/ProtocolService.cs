@@ -5,9 +5,11 @@ namespace OtHoneypot.Service;
 public class ProtocolService : BackgroundService
 {
     private readonly ILogger<ProtocolService> _logger;
-    private readonly IEnumerable<IProtocolModule> _protocolModules;
+    private readonly List<IProtocolModule> _protocolModules;
 
-    public ProtocolService(ILogger<ProtocolService> logger, IEnumerable<IProtocolModule> protocolModules)
+    List<Task> _runningProtocolModules = new List<Task>();
+
+    public ProtocolService(ILogger<ProtocolService> logger, List<IProtocolModule> protocolModules)
     {
         _logger = logger;
         _protocolModules = protocolModules;
@@ -23,5 +25,17 @@ public class ProtocolService : BackgroundService
         }
 
         await Task.WhenAll(tasks);
+    }
+
+    private async Task StartProtocolModuleAsync(IProtocolModule module, CancellationToken stoppingToken)
+    {
+        try
+        {
+            await module.StartAsync(stoppingToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error starting protocol module {module.Name}");
+        }
     }
 }

@@ -1,5 +1,6 @@
-using OtHoneypot.Core.Interfaces;
 using OtHoneypot.Core.Data;
+using OtHoneypot.Core.Enums;
+using OtHoneypot.Core.Interfaces;
 
 namespace OtHoneypot.Service;
 
@@ -55,8 +56,18 @@ public class DataService : BackgroundService, IDataService
 
         foreach (var template in dataTemplates)
         {
-            var value = template.MinValue + (float)new Random().NextDouble()
-                * (template.MaxValue - template.MinValue);
+            float value;
+            switch(template.Simulation.Type)
+            {
+                case SimulationType.Static:
+                case SimulationType.Random:
+                case SimulationType.RandomWalk:
+                    value = template.Simulation.MinValue + (float)new Random().NextDouble() * (template.Simulation.MaxValue - template.Simulation.MinValue);
+                    break;
+                default:
+                    _logger.LogError("Simulation type {type} is not implemented.", template.Simulation.Type);
+                    throw new NotImplementedException($"Simulation type {template.Simulation.Type} is not implemented.");   
+            }
             var data = new Data(template.Name, template.Id, value, DateTime.UtcNow);
             datas.Add(data);
         }
@@ -73,7 +84,7 @@ public class DataService : BackgroundService, IDataService
             {
                 var data = _templateIdToDataMap[templateId];
                 var template = DataTemplateIdToTemplateMap[templateId];
-                var value = template.MinValue + (float)new Random().NextDouble() * (template.MaxValue - template.MinValue);
+                var value = template.Simulation.MinValue + (float)new Random().NextDouble() * (template.Simulation.MaxValue - template.Simulation.MinValue);
                 data.ReplaceData(value, DateTime.UtcNow);
                 _templateIdToDataMap[templateId] = data;
             }
@@ -88,7 +99,7 @@ public class DataService : BackgroundService, IDataService
         foreach (var data in _generatedDatas)
         {
             var template = _dataTemplates.FirstOrDefault(t => t.Id == data.TemplateId);
-            if (data.Timestamp.AddSeconds(template.RefreshRate) <= DateTime.UtcNow)
+            if (data.Timestamp.AddSeconds(template.Simulation.RefreshRate) <= DateTime.UtcNow)
                 dataIdsToRefresh.Add(data.TemplateId);
 
         }

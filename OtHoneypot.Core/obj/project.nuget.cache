@@ -1,8 +1,10 @@
 {
   "version": 2,
-  "dgSpecHash": "6ALh2djO0v0=",
+  "dgSpecHash": "k5f0tG61OPs=",
   "success": true,
-  "projectFilePath": "C:\\Users\\antun.milakovic\\OneDrive - KONČAR - Elektroindustrija d.d\\Documents\\Projects\\OtHoneypot\\OtHoneypot.Core\\OtHoneypot.Core.csproj",
-  "expectedPackageFiles": [],
+  "projectFilePath": "c:\\Users\\antun.milakovic\\OneDrive - KONČAR - Elektroindustrija d.d\\Documents\\Projects\\OtHoneypot\\OtHoneypot.Core\\OtHoneypot.Core.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\antun.milakovic\\.nuget\\packages\\nmodbus\\3.0.83\\nmodbus.3.0.83.nupkg.sha512"
+  ],
   "logs": []
 }

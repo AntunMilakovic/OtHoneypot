@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "KSdpuB8Vufo=",
+  "dgSpecHash": "+nmZkSl7o8c=",
   "success": true,
-  "projectFilePath": "C:\\Users\\antun.milakovic\\OneDrive - KONČAR - Elektroindustrija d.d\\Documents\\Projects\\OtHoneypot\\OtHoneypot.Service\\OtHoneypot.Service.csproj",
+  "projectFilePath": "c:\\Users\\antun.milakovic\\OneDrive - KONČAR - Elektroindustrija d.d\\Documents\\Projects\\OtHoneypot\\OtHoneypot.Service\\OtHoneypot.Service.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\antun.milakovic\\.nuget\\packages\\microsoft.extensions.configuration\\10.0.11\\microsoft.extensions.configuration.10.0.11.nupkg.sha512",
     "C:\\Users\\antun.milakovic\\.nuget\\packages\\microsoft.extensions.configuration.abstractions\\10.0.11\\microsoft.extensions.configuration.abstractions.10.0.11.nupkg.sha512",
@@ -14,6 +14,7 @@
     "C:\\Users\\antun.milakovic\\.nuget\\packages\\microsoft.extensions.configuration.usersecrets\\10.0.11\\microsoft.extensions.configuration.usersecrets.10.0.11.nupkg.sha512",
     "C:\\Users\\antun.milakovic\\.nuget\\packages\\microsoft.extensions.dependencyinjection\\10.0.11\\microsoft.extensions.dependencyinjection.10.0.11.nupkg.sha512",
     "C:\\Users\\antun.milakovic\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\10.0.11\\microsoft.extensions.dependencyinjection.abstractions.10.0.11.nupkg.sha512",
+    "C:\\Users\\antun.milakovic\\.nuget\\packages\\microsoft.extensions.dependencymodel\\10.0.0\\microsoft.extensions.dependencymodel.10.0.0.nupkg.sha512",
     "C:\\Users\\antun.milakovic\\.nuget\\packages\\microsoft.extensions.diagnostics\\10.0.11\\microsoft.extensions.diagnostics.10.0.11.nupkg.sha512",
     "C:\\Users\\antun.milakovic\\.nuget\\packages\\microsoft.extensions.diagnostics.abstractions\\10.0.11\\microsoft.extensions.diagnostics.abstractions.10.0.11.nupkg.sha512",
     "C:\\Users\\antun.milakovic\\.nuget\\packages\\microsoft.extensions.fileproviders.abstractions\\10.0.11\\microsoft.extensions.fileproviders.abstractions.10.0.11.nupkg.sha512",
@@ -31,6 +32,10 @@
     "C:\\Users\\antun.milakovic\\.nuget\\packages\\microsoft.extensions.options\\10.0.11\\microsoft.extensions.options.10.0.11.nupkg.sha512",
     "C:\\Users\\antun.milakovic\\.nuget\\packages\\microsoft.extensions.options.configurationextensions\\10.0.11\\microsoft.extensions.options.configurationextensions.10.0.11.nupkg.sha512",
     "C:\\Users\\antun.milakovic\\.nuget\\packages\\microsoft.extensions.primitives\\10.0.11\\microsoft.extensions.primitives.10.0.11.nupkg.sha512",
+    "C:\\Users\\antun.milakovic\\.nuget\\packages\\nmodbus\\3.0.83\\nmodbus.3.0.83.nupkg.sha512",
+    "C:\\Users\\antun.milakovic\\.nuget\\packages\\serilog\\4.4.0\\serilog.4.4.0.nupkg.sha512",
+    "C:\\Users\\antun.milakovic\\.nuget\\packages\\serilog.settings.configuration\\10.0.1\\serilog.settings.configuration.10.0.1.nupkg.sha512",
+    "C:\\Users\\antun.milakovic\\.nuget\\packages\\serilog.sinks.file\\7.0.0\\serilog.sinks.file.7.0.0.nupkg.sha512",
     "C:\\Users\\antun.milakovic\\.nuget\\packages\\system.diagnostics.eventlog\\10.0.11\\system.diagnostics.eventlog.10.0.11.nupkg.sha512"
   ],
   "logs": []

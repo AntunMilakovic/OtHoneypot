@@ -10,3 +10,4 @@ C:\Users\antun.milakovic\OneDrive - KONČAR - Elektroindustrija d.d\Documents\Pr
 C:\Users\antun.milakovic\OneDrive - KONČAR - Elektroindustrija d.d\Documents\Projects\OtHoneypot\OtHoneypot.Core\obj\Debug\net10.0\OtHoneypot.Core.pdb
 C:\Users\antun.milakovic\OneDrive - KONČAR - Elektroindustrija d.d\Documents\Projects\OtHoneypot\OtHoneypot.Core\obj\Debug\net10.0\ref\OtHoneypot.Core.dll
 C:\Users\antun.milakovic\OneDrive - KONČAR - Elektroindustrija d.d\Documents\Projects\OtHoneypot\OtHoneypot.Core\obj\Debug\net10.0\OtHoneypot.Core.sourcelink.json
+C:\Users\antun.milakovic\OneDrive - KONČAR - Elektroindustrija d.d\Documents\Projects\OtHoneypot\OtHoneypot.Core\obj\Debug\net10.0\OtHoneypot.Core.csproj.AssemblyReference.cache
