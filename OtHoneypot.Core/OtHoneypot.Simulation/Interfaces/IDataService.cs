@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace OtHoneypot.Core.Interfaces;
 public interface IDataService
 {

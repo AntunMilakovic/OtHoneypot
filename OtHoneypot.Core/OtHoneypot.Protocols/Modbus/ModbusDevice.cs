@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace OtHoneypot.Core.Protocols;
 
 public class ModbusDevice

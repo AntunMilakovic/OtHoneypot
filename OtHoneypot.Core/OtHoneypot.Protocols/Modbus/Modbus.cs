@@ -3,16 +3,27 @@ using System.Net.Sockets;
 using OtHoneypot.Core.Interfaces;
 using NModbus;
 using NModbus.Extensions.Enron;
-using NModbus.Logging;
+using Serilog;
+using System.Threading.Tasks;
+using System.Threading;
+using System;
 
 namespace OtHoneypot.Core.Protocols;
 
 public class Modbus : IProtocolModule
 {
-    private readonly ModbusConfiguration _configuration;
+    private readonly IModbusConfiguration _configuration;
 
-    public string Name => _configuration.Name;
-    public ProtocolType Type => _configuration.Type;
+    public string Name { get; }
+    public ProtocolType Type { get; }
+
+    private readonly ILogger _logger;
+
+    public Modbus(ILogger logger, IModbusConfiguration configuration)
+    {
+        _configuration = configuration;
+        _logger = logger;
+    }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -25,7 +36,7 @@ public class Modbus : IProtocolModule
                 // Implement the Modbus protocol logic here
                 // For example, you can listen for incoming Modbus requests and respond accordingly
                 // logger.Write("Reading finished in " + DateTime.UtcNow.Subtract(stopwatch).Seconds);
-                var waitSeconds = _configuration.ReadingPeriod - DateTime.UtcNow.Subtract(stopwatch).Seconds;
+                var waitSeconds = _configuration.ReadingInterval - DateTime.UtcNow.Subtract(stopwatch).Seconds;
 
                 if (waitSeconds < 0)
                     continue;
@@ -42,7 +53,7 @@ public class Modbus : IProtocolModule
         {
             foreach (var device in _configuration.Devices)
             {
-                foreach(var poll in device.Polls)
+                foreach (var poll in device.Polls)
                     ModbusTcpMasterReadInputs(device.IPAddress, device.Port, poll.StartAddress, poll.Count);
             }
         }
@@ -59,28 +70,27 @@ public class Modbus : IProtocolModule
         return Task.CompletedTask;
     }
 
-    public static void ModbusTcpMasterReadInputs(string ip, int port, ushort startAddress, ushort numInputs)
+    public void ModbusTcpMasterReadInputs(string ip, int port, ushort startAddress, ushort numInputs)
     {
         try
         {
-            
-        using (TcpClient client = new TcpClient(ip, port))
-        {
-            var factory = new ModbusFactory();
-            IModbusMaster master = factory.CreateMaster(client);
-
-            // read five input values
-
-            bool[] inputs = master.ReadInputs(0, startAddress, numInputs);
-
-            for (int i = 0; i < numInputs; i++)
+            using (TcpClient client = new TcpClient(ip, port))
             {
-                //logger.WriteLine($"Input {(startAddress + i)}={(inputs[i] ? 1 : 0)}");
-                Console.WriteLine($"Input {(startAddress + i)}={(inputs[i] ? 1 : 0)}");
+                var factory = new ModbusFactory();
+                IModbusMaster master = factory.CreateMaster(client);
+
+                // read five input values
+
+                bool[] inputs = master.ReadInputs(0, startAddress, numInputs);
+
+                for (int i = 0; i < numInputs; i++)
+                {
+                    //logger.WriteLine($"Input {(startAddress + i)}={(inputs[i] ? 1 : 0)}");
+                    _logger.Information($"Input {(startAddress + i)}={(inputs[i] ? 1 : 0)}");
+                }
             }
         }
-        }
-        catch(Exception e)
+        catch (Exception e)
         {
             //logger.WriteLine("Error: " + e);
             Console.WriteLine("Error: " + e);
@@ -90,7 +100,7 @@ public class Modbus : IProtocolModule
     /// <summary>
     ///     Simple Modbus TCP master read inputs example.
     /// </summary>
-    public static void ModbusTcpMasterReadHoldingRegisters32()
+    public void ModbusTcpMasterReadHoldingRegisters32()
     {
         using (TcpClient client = new TcpClient("10.16.12.50", 502))
         {
@@ -116,7 +126,7 @@ public class Modbus : IProtocolModule
     /// <summary>
     ///     Simple Modbus UDP master write coils example.
     /// </summary>
-    public static void ModbusUdpMasterWriteCoils()
+    public void ModbusUdpMasterWriteCoils()
     {
         using (UdpClient client = new UdpClient())
         {
@@ -137,7 +147,7 @@ public class Modbus : IProtocolModule
     /// <summary>
     ///     Simple Modbus TCP slave example.
     /// </summary>
-    public static void StartModbusTcpSlave()
+    public void StartModbusTcpSlave()
     {
         int port = 502;
         IPAddress address = new IPAddress(new byte[] { 127, 0, 0, 1 });
@@ -165,7 +175,7 @@ public class Modbus : IProtocolModule
     /// <summary>
     ///     Simple Modbus UDP slave example.
     /// </summary>
-    public static void StartModbusUdpSlave()
+    public void StartModbusUdpSlave()
     {
         using (UdpClient client = new UdpClient(502))
         {
@@ -188,7 +198,7 @@ public class Modbus : IProtocolModule
     /// <summary>
     ///     Modbus TCP master and slave example.
     /// </summary>
-    public static void ModbusTcpMasterReadInputsFromModbusSlave()
+    public void ModbusTcpMasterReadInputsFromModbusSlave()
     {
         byte slaveId = 1;
         int port = 502;

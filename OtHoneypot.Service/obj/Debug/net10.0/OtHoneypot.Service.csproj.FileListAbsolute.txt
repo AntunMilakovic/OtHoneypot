@@ -54,3 +54,6 @@ C:\Users\antun.milakovic\OneDrive - KONČAR - Elektroindustrija d.d\Documents\Pr
 C:\Users\antun.milakovic\OneDrive - KONČAR - Elektroindustrija d.d\Documents\Projects\OtHoneypot\OtHoneypot.Service\bin\Debug\net10.0\Serilog.dll
 C:\Users\antun.milakovic\OneDrive - KONČAR - Elektroindustrija d.d\Documents\Projects\OtHoneypot\OtHoneypot.Service\bin\Debug\net10.0\Serilog.Settings.Configuration.dll
 C:\Users\antun.milakovic\OneDrive - KONČAR - Elektroindustrija d.d\Documents\Projects\OtHoneypot\OtHoneypot.Service\bin\Debug\net10.0\Serilog.Sinks.File.dll
+c:\Users\antun.milakovic\OneDrive - KONČAR - Elektroindustrija d.d\Documents\Projects\OtHoneypot\OtHoneypot.Service\bin\Debug\net10.0\Serilog.Sinks.Console.dll
+c:\Users\antun.milakovic\OneDrive - KONČAR - Elektroindustrija d.d\Documents\Projects\OtHoneypot\OtHoneypot.Service\bin\Debug\net10.0\Serilog.Extensions.Hosting.dll
+c:\Users\antun.milakovic\OneDrive - KONČAR - Elektroindustrija d.d\Documents\Projects\OtHoneypot\OtHoneypot.Service\bin\Debug\net10.0\Serilog.Extensions.Logging.dll

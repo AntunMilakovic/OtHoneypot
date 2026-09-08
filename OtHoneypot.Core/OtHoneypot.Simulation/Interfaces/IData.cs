@@ -1,3 +1,5 @@
+using System;
+
 namespace OtHoneypot.Core.Interfaces;
 
 public interface IData

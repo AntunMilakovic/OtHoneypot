@@ -49,6 +49,10 @@
             "NModbus": {
               "target": "Package",
               "version": "[3.0.83, )"
+            },
+            "Serilog": {
+              "target": "Package",
+              "version": "[4.4.0, )"
             }
           },
           "imports": [
@@ -403,9 +407,17 @@
               "target": "Package",
               "version": "[4.4.0, )"
             },
+            "Serilog.Extensions.Hosting": {
+              "target": "Package",
+              "version": "[10.0.0, )"
+            },
             "Serilog.Settings.Configuration": {
               "target": "Package",
               "version": "[10.0.1, )"
+            },
+            "Serilog.Sinks.Console": {
+              "target": "Package",
+              "version": "[6.1.1, )"
             },
             "Serilog.Sinks.File": {
               "target": "Package",

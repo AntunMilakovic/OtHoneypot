@@ -49,6 +49,10 @@
             "NModbus": {
               "target": "Package",
               "version": "[3.0.83, )"
+            },
+            "Serilog": {
+              "target": "Package",
+              "version": "[4.4.0, )"
             }
           },
           "imports": [

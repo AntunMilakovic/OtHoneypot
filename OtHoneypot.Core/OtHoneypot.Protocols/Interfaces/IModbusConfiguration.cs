@@ -1,0 +1,11 @@
+using System.Collections.Generic;
+using OtHoneypot.Core.Protocols;
+
+namespace OtHoneypot.Core.Interfaces;
+
+public interface IModbusConfiguration : IProtocolConfiguration
+{
+    List<ModbusDevice> Devices { get; set; }
+
+    List<ModbusRegister> Registers { get; set; }
+}

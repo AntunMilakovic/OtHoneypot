@@ -14,6 +14,22 @@
             "related": ".xml"
           }
         }
+      },
+      "Serilog/4.4.0": {
+        "type": "package",
+        "compile": {
+          "lib/net10.0/Serilog.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net10.0/Serilog.dll": {
+            "related": ".xml"
+          }
+        },
+        "build": {
+          "buildTransitive/Serilog.targets": {}
+        }
       }
     }
   },
@@ -38,11 +54,41 @@
         "nmodbus.3.0.83.nupkg.sha512",
         "nmodbus.nuspec"
       ]
+    },
+    "Serilog/4.4.0": {
+      "sha512": "ZC6Le3rr4TVJJjS4KsQAesxeF1EhW9qcZmmG7eP5Y2G3+gTGkJEUXkq4+tZNPtyp05I0wWOxnIjwtxFweJsObw==",
+      "type": "package",
+      "path": "serilog/4.4.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "README.md",
+        "build/Serilog.targets",
+        "buildTransitive/Serilog.targets",
+        "icon.png",
+        "lib/net10.0/Serilog.dll",
+        "lib/net10.0/Serilog.xml",
+        "lib/net462/Serilog.dll",
+        "lib/net462/Serilog.xml",
+        "lib/net471/Serilog.dll",
+        "lib/net471/Serilog.xml",
+        "lib/net6.0/Serilog.dll",
+        "lib/net6.0/Serilog.xml",
+        "lib/net8.0/Serilog.dll",
+        "lib/net8.0/Serilog.xml",
+        "lib/net9.0/Serilog.dll",
+        "lib/net9.0/Serilog.xml",
+        "lib/netstandard2.0/Serilog.dll",
+        "lib/netstandard2.0/Serilog.xml",
+        "serilog.4.4.0.nupkg.sha512",
+        "serilog.nuspec"
+      ]
     }
   },
   "projectFileDependencyGroups": {
     "net10.0": [
-      "NModbus >= 3.0.83"
+      "NModbus >= 3.0.83",
+      "Serilog >= 4.4.0"
     ]
   },
   "packageFolders": {
@@ -93,6 +139,10 @@
           "NModbus": {
             "target": "Package",
             "version": "[3.0.83, )"
+          },
+          "Serilog": {
+            "target": "Package",
+            "version": "[4.4.0, )"
           }
         },
         "imports": [

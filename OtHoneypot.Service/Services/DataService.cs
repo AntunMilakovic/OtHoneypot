@@ -1,12 +1,19 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
 using OtHoneypot.Core.Data;
 using OtHoneypot.Core.Enums;
 using OtHoneypot.Core.Interfaces;
+using Serilog;
 
 namespace OtHoneypot.Service;
 
 public class DataService : BackgroundService, IDataService
 {
-    private readonly ILogger<DataService> _logger;
+    private readonly ILogger _logger;
     private List<DataTemplate> _dataTemplates { get; set; }
 
     private Dictionary<int, DataTemplate> DataTemplateIdToTemplateMap { get; set; }
@@ -15,7 +22,7 @@ public class DataService : BackgroundService, IDataService
 
     private object _lock = new object();
 
-    public DataService(ILogger<DataService> logger, List<DataTemplate> dataTemplates)
+    public DataService(ILogger logger, List<DataTemplate> dataTemplates)
     {
         _logger = logger;
         _dataTemplates = dataTemplates;
@@ -42,10 +49,7 @@ public class DataService : BackgroundService, IDataService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            if (_logger.IsEnabled(LogLevel.Information))
-            {
-                RefreshData(_dataTemplates);
-            }
+            RefreshData(_dataTemplates);
             await Task.Delay(1000, stoppingToken);
         }
     }
@@ -65,7 +69,7 @@ public class DataService : BackgroundService, IDataService
                     value = template.Simulation.MinValue + (float)new Random().NextDouble() * (template.Simulation.MaxValue - template.Simulation.MinValue);
                     break;
                 default:
-                    _logger.LogError("Simulation type {type} is not implemented.", template.Simulation.Type);
+                    _logger.Warning("Simulation type {type} is not implemented.", template.Simulation.Type);
                     throw new NotImplementedException($"Simulation type {template.Simulation.Type} is not implemented.");   
             }
             var data = new Data(template.Name, template.Id, value, DateTime.UtcNow);
@@ -90,7 +94,8 @@ public class DataService : BackgroundService, IDataService
             }
             _generatedDatas = _templateIdToDataMap.Values.ToList();
         }
-        _logger.LogInformation("Refreshed {count} data items at: {time}", dataToRefresh.Count, DateTimeOffset.Now);
+        if(dataToRefresh.Count > 0)
+            _logger.Information("Refreshed {count} data items at: {time}", dataToRefresh.Count, DateTimeOffset.Now);
     }
 
     private List<int> GetDataIdsWhichNeedsRefresh()
