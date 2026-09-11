@@ -5,9 +5,9 @@ namespace OtHoneypot.Core.Protocols;
 
 public class ModbusConfiguration : IModbusConfiguration
 {
-    public List<ModbusDevice> Devices { get; set; }
-
-    public List<ModbusRegister> Registers { get; set; }
+    public List<ModbusDevice> Devices { get; set; } = new();
+    public List<ModbusRegister> Registers { get; set; } = new();
+    public List<ModbusCommandMapping> CommandMappings { get; set; } = new();
     public string Name { get; set; }
     public string Description { get; set; }
     public bool Enabled { get; set; }
@@ -17,13 +17,7 @@ public class ModbusConfiguration : IModbusConfiguration
     public int Port { get; set; }
     public List<string> AllowedIPs { get; set; }
     public int ReadingInterval { get; set; }
-
 }
-// public class ModbusConfiguration
-// {
-//     public ModbusMasterConfiguration Master { get; set; }
-//     public ModbusSlaveConfiguration Slave { get; set; }
-// }
 
 public class ModbusMasterConfiguration
 {
@@ -33,6 +27,5 @@ public class ModbusMasterConfiguration
 public class ModbusSlaveConfiguration
 {
     public byte UnitId { get; set; } = 1;
-
     public List<ModbusRegister> Registers { get; set; }
 }
