@@ -13,44 +13,66 @@ namespace OtHoneypot.Service;
 
 public class DataService : BackgroundService, IDataService
 {
+    private const int ServiceLoopDelayMs = 250;
+
     private readonly ILogger _logger;
-    private readonly List<DataTemplate> _dataTemplates;
-    private readonly Dictionary<int, DataTemplate> _dataTemplateIdToTemplateMap;
-    private readonly Dictionary<int, Data> _templateIdToDataMap;
-    private readonly Dictionary<int, SimulationCommand> _simulationCommands = new();
-    private readonly object _lock = new();
+    private readonly Dictionary<int, DataTemplate> _templatesById;
+    private readonly Dictionary<string, int> _templateIdsByName;
+    private readonly Dictionary<int, Data> _dataByTemplateId;
+    private readonly Dictionary<int, SimulationCommand> _simulationCommands;
+    private readonly object _sync = new();
     private readonly Random _random = new();
 
     public DataService(ILogger logger, List<DataTemplate> dataTemplates)
     {
-        _logger = logger;
-        _dataTemplates = dataTemplates;
-        _dataTemplateIdToTemplateMap = _dataTemplates.ToDictionary(t => t.Id, t => t);
-        _templateIdToDataMap = GenerateData(_dataTemplates).ToDictionary(d => d.TemplateId, d => d);
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        foreach (var template in _dataTemplates)
-            _simulationCommands[template.Id] = SimulationCommand.Hold;
+        ArgumentNullException.ThrowIfNull(dataTemplates);
+        ValidateTemplates(dataTemplates);
+
+        _templatesById = dataTemplates.ToDictionary(template => template.Id);
+        _templateIdsByName = dataTemplates.ToDictionary(template => template.Name, template => template.Id, StringComparer.Ordinal);
+        _dataByTemplateId = GenerateInitialData(dataTemplates);
+        _simulationCommands = dataTemplates.ToDictionary(template => template.Id, _ => SimulationCommand.Hold);
     }
 
     public List<IData> GetGeneratedDatas(List<int> dataTemplateIds)
     {
-        lock (_lock)
-            return _templateIdToDataMap.Values.Where(d => dataTemplateIds.Contains(d.TemplateId)).Cast<IData>().ToList();
+        ArgumentNullException.ThrowIfNull(dataTemplateIds);
+        var requestedIds = dataTemplateIds.ToHashSet();
+
+        lock (_sync)
+        {
+            return _dataByTemplateId.Values
+                .Where(data => requestedIds.Contains(data.TemplateId))
+                .Select(CreateSnapshot)
+                .Cast<IData>()
+                .ToList();
+        }
     }
 
     public List<IData> GetGeneratedDatas(List<string> dataTemplateNames)
     {
-        lock (_lock)
-            return _templateIdToDataMap.Values.Where(d => dataTemplateNames.Contains(d.Name)).Cast<IData>().ToList();
+        ArgumentNullException.ThrowIfNull(dataTemplateNames);
+        var requestedNames = dataTemplateNames.ToHashSet(StringComparer.Ordinal);
+
+        lock (_sync)
+        {
+            return _dataByTemplateId.Values
+                .Where(data => requestedNames.Contains(data.Name))
+                .Select(CreateSnapshot)
+                .Cast<IData>()
+                .ToList();
+        }
     }
 
     public bool GetGeneratedData(int dataTemplateId, out IData data)
     {
-        lock (_lock)
+        lock (_sync)
         {
-            if (_templateIdToDataMap.TryGetValue(dataTemplateId, out var generatedData))
+            if (_dataByTemplateId.TryGetValue(dataTemplateId, out var generatedData))
             {
-                data = generatedData;
+                data = CreateSnapshot(generatedData);
                 return true;
             }
         }
@@ -61,12 +83,18 @@ public class DataService : BackgroundService, IDataService
 
     public bool GetGeneratedData(string dataTemplateName, out IData data)
     {
-        lock (_lock)
+        if (string.IsNullOrWhiteSpace(dataTemplateName))
         {
-            var generatedData = _templateIdToDataMap.Values.FirstOrDefault(d => d.Name == dataTemplateName);
-            if (generatedData != null)
+            data = null!;
+            return false;
+        }
+
+        lock (_sync)
+        {
+            if (_templateIdsByName.TryGetValue(dataTemplateName, out var templateId) &&
+                _dataByTemplateId.TryGetValue(templateId, out var generatedData))
             {
-                data = generatedData;
+                data = CreateSnapshot(generatedData);
                 return true;
             }
         }
@@ -77,23 +105,30 @@ public class DataService : BackgroundService, IDataService
 
     public bool ExecuteSimulationCommand(int dataTemplateId, SimulationCommand command)
     {
-        lock (_lock)
+        lock (_sync)
         {
-            if (!_dataTemplateIdToTemplateMap.ContainsKey(dataTemplateId))
+            if (!_templatesById.TryGetValue(dataTemplateId, out var template))
                 return false;
 
-            _simulationCommands[dataTemplateId] = command;
+            if (!_dataByTemplateId.TryGetValue(dataTemplateId, out var data))
+                return false;
 
             if (command == SimulationCommand.Reset)
             {
-                var template = _dataTemplateIdToTemplateMap[dataTemplateId];
-                var data = _templateIdToDataMap[dataTemplateId];
                 data.ReplaceData(GetInitialValue(template), DateTime.UtcNow);
                 _simulationCommands[dataTemplateId] = SimulationCommand.Hold;
             }
+            else
+            {
+                _simulationCommands[dataTemplateId] = command;
+            }
         }
 
-        _logger.Information("Simulation command {Command} applied to DataTemplateId {DataTemplateId}", command, dataTemplateId);
+        _logger.Information(
+            "Simulation command {Command} applied to DataTemplateId {DataTemplateId}",
+            command,
+            dataTemplateId);
+
         return true;
     }
 
@@ -102,70 +137,82 @@ public class DataService : BackgroundService, IDataService
         while (!stoppingToken.IsCancellationRequested)
         {
             RefreshData();
-            await Task.Delay(250, stoppingToken);
+            await Task.Delay(ServiceLoopDelayMs, stoppingToken);
         }
     }
 
-    private List<Data> GenerateData(List<DataTemplate> dataTemplates)
+    private Dictionary<int, Data> GenerateInitialData(IEnumerable<DataTemplate> templates)
     {
-        var datas = new List<Data>();
-        foreach (var template in dataTemplates)
-            datas.Add(new Data(template.Name, template.Id, GetInitialValue(template), DateTime.UtcNow));
+        var now = DateTime.UtcNow;
 
-        return datas;
-    }
-
-    private float GetInitialValue(DataTemplate template)
-    {
-        return template.Simulation.Type switch
-        {
-            SimulationType.Static => template.Simulation.MinValue,
-            SimulationType.Random => NextRandom(template.Simulation.MinValue, template.Simulation.MaxValue),
-            SimulationType.RandomWalk => NextRandom(template.Simulation.MinValue, template.Simulation.MaxValue),
-            SimulationType.Dynamic => template.Simulation.MinValue,
-            _ => throw new NotImplementedException($"Simulation type {template.Simulation.Type} is not implemented.")
-        };
+        return templates.ToDictionary(
+            template => template.Id,
+            template => new Data(template.Name, template.Id, GetInitialValue(template), now));
     }
 
     private void RefreshData()
     {
-        lock (_lock)
+        lock (_sync)
         {
             var now = DateTime.UtcNow;
-            foreach (var pair in _templateIdToDataMap)
-            {
-                var data = pair.Value;
-                var template = _dataTemplateIdToTemplateMap[pair.Key];
-                var refreshRate = Math.Max(1, template.Simulation.RefreshRate);
 
-                if (data.Timestamp.AddSeconds(refreshRate) > now)
+            foreach (var (templateId, template) in _templatesById)
+            {
+                var data = _dataByTemplateId[templateId];
+                var refreshInterval = TimeSpan.FromSeconds(template.Simulation.RefreshRate);
+
+                if (now - data.Timestamp < refreshInterval)
                     continue;
 
-                var currentValue = Convert.ToSingle(data.Value);
-                var nextValue = GetNextValue(template, currentValue);
+                var nextValue = GetNextValue(template, data.Value);
                 data.ReplaceData(nextValue, now);
             }
         }
     }
 
+    private float GetInitialValue(DataTemplate template)
+    {
+        var simulation = template.Simulation;
+
+        return simulation.Type switch
+        {
+            SimulationType.Static => simulation.MinValue,
+            SimulationType.Random => NextRandom(simulation.MinValue, simulation.MaxValue),
+            SimulationType.RandomWalk => NextRandom(simulation.MinValue, simulation.MaxValue),
+            SimulationType.Dynamic => simulation.MinValue,
+            _ => throw new NotSupportedException(
+                $"Simulation type {simulation.Type} for template '{template.Name}' is not implemented.")
+        };
+    }
+
     private float GetNextValue(DataTemplate template, float currentValue)
     {
         var simulation = template.Simulation;
-        var changeRate = Math.Abs(simulation.ValueChangeRate ?? 1f);
+        var changeRate = simulation.ValueChangeRate ?? 1f;
 
         return simulation.Type switch
         {
             SimulationType.Static => currentValue,
             SimulationType.Random => NextRandom(simulation.MinValue, simulation.MaxValue),
-            SimulationType.RandomWalk => Math.Clamp(currentValue + NextRandom(-changeRate, changeRate), simulation.MinValue, simulation.MaxValue),
-            SimulationType.Dynamic => GetDynamicValue(template.Id, currentValue, changeRate, simulation.MinValue, simulation.MaxValue),
-            _ => throw new NotImplementedException($"Simulation type {simulation.Type} is not implemented.")
+            SimulationType.RandomWalk => Math.Clamp(
+                currentValue + NextRandom(-changeRate, changeRate),
+                simulation.MinValue,
+                simulation.MaxValue),
+            SimulationType.Dynamic => GetDynamicValue(
+                template.Id,
+                currentValue,
+                changeRate,
+                simulation.MinValue,
+                simulation.MaxValue),
+            _ => throw new NotSupportedException(
+                $"Simulation type {simulation.Type} for template '{template.Name}' is not implemented.")
         };
     }
 
     private float GetDynamicValue(int templateId, float currentValue, float changeRate, float minValue, float maxValue)
     {
         var command = _simulationCommands.GetValueOrDefault(templateId, SimulationCommand.Hold);
+
         return command switch
         {
             SimulationCommand.Increase => Math.Clamp(currentValue + changeRate, minValue, maxValue),
@@ -176,9 +223,59 @@ public class DataService : BackgroundService, IDataService
 
     private float NextRandom(float minValue, float maxValue)
     {
-        if (maxValue <= minValue)
+        if (minValue == maxValue)
             return minValue;
 
         return minValue + (float)_random.NextDouble() * (maxValue - minValue);
+    }
+
+    private static Data CreateSnapshot(Data source) =>
+        new(source.Name, source.TemplateId, source.Value, source.Timestamp);
+
+    private static void ValidateTemplates(IEnumerable<DataTemplate> templates)
+    {
+        var templateList = templates.ToList();
+
+        var duplicateId = templateList
+            .GroupBy(template => template.Id)
+            .FirstOrDefault(group => group.Count() > 1);
+
+        if (duplicateId != null)
+            throw new InvalidOperationException($"Duplicate DataTemplate Id detected: {duplicateId.Key}.");
+
+        var duplicateName = templateList
+            .Where(template => !string.IsNullOrWhiteSpace(template.Name))
+            .GroupBy(template => template.Name, StringComparer.Ordinal)
+            .FirstOrDefault(group => group.Count() > 1);
+
+        if (duplicateName != null)
+            throw new InvalidOperationException($"Duplicate DataTemplate name detected: '{duplicateName.Key}'.");
+
+        foreach (var template in templateList)
+        {
+            if (string.IsNullOrWhiteSpace(template.Name))
+                throw new InvalidOperationException($"DataTemplate {template.Id} must have a name.");
+
+            if (template.Simulation == null)
+                throw new InvalidOperationException($"DataTemplate '{template.Name}' ({template.Id}) has no Simulation configuration.");
+
+            if (template.Simulation.MinValue > template.Simulation.MaxValue)
+            {
+                throw new InvalidOperationException(
+                    $"DataTemplate '{template.Name}' ({template.Id}) has MinValue {template.Simulation.MinValue} greater than MaxValue {template.Simulation.MaxValue}.");
+            }
+
+            if (template.Simulation.RefreshRate <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"DataTemplate '{template.Name}' ({template.Id}) must have RefreshRate greater than 0 seconds.");
+            }
+
+            if (template.Simulation.ValueChangeRate < 0)
+            {
+                throw new InvalidOperationException(
+                    $"DataTemplate '{template.Name}' ({template.Id}) cannot have a negative ValueChangeRate.");
+            }
+        }
     }
 }
