@@ -352,7 +352,7 @@ public sealed class Modbus : IProtocolModule
         {
             if (!_dataService.GetGeneratedData(
                     register.DataTemplateId,
-                    out var value))
+                    out var data))
             {
                 _logger.Warning(
                     "No generated data found for DataTemplateId {DataTemplateId}",
@@ -365,7 +365,7 @@ public sealed class Modbus : IProtocolModule
             {
                 SetRegisterValue(
                     register,
-                    value);
+                    data.Value);
             }
             catch (Exception ex)
             {

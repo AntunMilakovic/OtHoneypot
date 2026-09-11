@@ -17,6 +17,7 @@ public class ModbusConfiguration : IModbusConfiguration
     public int Port { get; set; }
     public List<string> AllowedIPs { get; set; }
     public int ReadingInterval { get; set; }
+
 }
 // public class ModbusConfiguration
 // {
@@ -31,7 +32,7 @@ public class ModbusMasterConfiguration
 
 public class ModbusSlaveConfiguration
 {
-    public byte UnitId { get; set; }
+    public byte UnitId { get; set; } = 1;
 
     public List<ModbusRegister> Registers { get; set; }
 }
