@@ -3,3 +3,5 @@
 *.cache
 *.exe
 *.AssemblyInfo*.cs
+*obj/*
+*bin/*
