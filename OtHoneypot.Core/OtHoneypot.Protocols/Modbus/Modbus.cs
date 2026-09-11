@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -101,28 +102,28 @@ public sealed class Modbus : IProtocolModule
             case ModbusRegisterType.Coil:
             {
                 var values = master.ReadCoils(device.UnitId, poll.StartAddress, poll.Count);
-                for (int i = 0; i < values.Length; i++)
+                for (var i = 0; i < values.Length; i++)
                     _logger.Information("{Device} Coil {Address} = {Value}", device.Name, poll.StartAddress + i, values[i]);
                 break;
             }
             case ModbusRegisterType.DiscreteInput:
             {
                 var values = master.ReadInputs(device.UnitId, poll.StartAddress, poll.Count);
-                for (int i = 0; i < values.Length; i++)
+                for (var i = 0; i < values.Length; i++)
                     _logger.Information("{Device} DiscreteInput {Address} = {Value}", device.Name, poll.StartAddress + i, values[i]);
                 break;
             }
             case ModbusRegisterType.InputRegister:
             {
                 var values = master.ReadInputRegisters(device.UnitId, poll.StartAddress, poll.Count);
-                for (int i = 0; i < values.Length; i++)
+                for (var i = 0; i < values.Length; i++)
                     _logger.Information("{Device} InputRegister {Address} = {Value}", device.Name, poll.StartAddress + i, values[i]);
                 break;
             }
             case ModbusRegisterType.HoldingRegister:
             {
                 var values = master.ReadHoldingRegisters(device.UnitId, poll.StartAddress, poll.Count);
-                for (int i = 0; i < values.Length; i++)
+                for (var i = 0; i < values.Length; i++)
                     _logger.Information("{Device} HoldingRegister {Address} = {Value}", device.Name, poll.StartAddress + i, values[i]);
                 break;
             }
@@ -133,11 +134,8 @@ public sealed class Modbus : IProtocolModule
 
     private async Task RunSlaveAsync(CancellationToken cancellationToken)
     {
-        if ((_configuration.Registers == null || _configuration.Registers.Count == 0) &&
-            (_configuration.CommandMappings == null || _configuration.CommandMappings.Count == 0))
-        {
+        if (_configuration.Registers.Count == 0 && _configuration.CommandMappings.Count == 0)
             throw new InvalidOperationException($"Modbus slave '{Name}' has no configured registers or command mappings.");
-        }
 
         IPAddress bindAddress;
         if (string.IsNullOrWhiteSpace(_configuration.BindAddress) || _configuration.BindAddress == "0.0.0.0")
@@ -150,15 +148,19 @@ public sealed class Modbus : IProtocolModule
 
         var factory = new ModbusFactory();
         var network = factory.CreateSlaveNetwork(_slaveTcpListener);
-        const byte slaveId = 1;
 
-        _slave = factory.CreateSlave(slaveId);
+        _slave = factory.CreateSlave(_configuration.UnitId);
         network.AddSlave(_slave);
 
         UpdateRegisters();
         InitializeCommandValues();
 
-        _logger.Information("Modbus TCP slave {Name} listening on {Address}:{Port}, UnitId {UnitId}", Name, bindAddress, _configuration.Port, slaveId);
+        _logger.Information(
+            "Modbus TCP slave {Name} listening on {Address}:{Port}, UnitId {UnitId}",
+            Name,
+            bindAddress,
+            _configuration.Port,
+            _configuration.UnitId);
 
         var listenTask = network.ListenAsync(cancellationToken);
         var updateTask = RunRegisterUpdateLoopAsync(cancellationToken);
@@ -193,48 +195,72 @@ public sealed class Modbus : IProtocolModule
 
     private void InitializeCommandValues()
     {
-        if (_slave == null || _configuration.CommandMappings == null)
+        if (_slave == null)
             return;
 
-        foreach (var mapping in _configuration.CommandMappings)
-            _lastCommandValues[GetCommandKey(mapping)] = ReadCommandValue(mapping);
+        foreach (var group in GetCommandGroups())
+            _lastCommandValues[group.Key] = ReadCommandValue(group.First());
     }
 
     private void ProcessCommandMappings()
     {
-        if (_slave == null || _configuration.CommandMappings == null)
+        if (_slave == null)
             return;
 
-        foreach (var mapping in _configuration.CommandMappings)
+        foreach (var group in GetCommandGroups())
         {
+            var firstMapping = group.First();
+
             try
             {
-                var currentValue = ReadCommandValue(mapping);
-                var key = GetCommandKey(mapping);
+                var currentValue = ReadCommandValue(firstMapping);
 
-                if (_lastCommandValues.TryGetValue(key, out var previousValue) && previousValue == currentValue)
+                if (_lastCommandValues.TryGetValue(group.Key, out var previousValue) && previousValue == currentValue)
                     continue;
 
-                _lastCommandValues[key] = currentValue;
+                _lastCommandValues[group.Key] = currentValue;
 
-                if (currentValue != mapping.Value)
-                    continue;
-
-                if (!_dataService.ExecuteSimulationCommand(mapping.DataTemplateId, mapping.Command))
+                var mapping = group.FirstOrDefault(candidate => candidate.Value == currentValue);
+                if (mapping == null)
                 {
-                    _logger.Warning("Modbus command {CommandName} targets unknown DataTemplateId {DataTemplateId}", mapping.Name, mapping.DataTemplateId);
+                    _logger.Debug(
+                        "No Modbus command mapped for {RegisterType} {Address} value {Value}",
+                        firstMapping.RegisterType,
+                        firstMapping.Address,
+                        currentValue);
                     continue;
                 }
 
-                _logger.Information("Modbus command {CommandName} ({Command}) received at {RegisterType} {Address} with value {Value}",
-                    mapping.Name, mapping.Command, mapping.RegisterType, mapping.Address, currentValue);
+                if (!_dataService.ExecuteSimulationCommand(mapping.DataTemplateId, mapping.Command))
+                {
+                    _logger.Warning(
+                        "Modbus command {CommandName} targets unknown DataTemplateId {DataTemplateId}",
+                        mapping.Name,
+                        mapping.DataTemplateId);
+                    continue;
+                }
+
+                _logger.Information(
+                    "Modbus command {CommandName} ({Command}) received at {RegisterType} {Address} with value {Value}",
+                    mapping.Name,
+                    mapping.Command,
+                    mapping.RegisterType,
+                    mapping.Address,
+                    currentValue);
             }
             catch (Exception ex)
             {
-                _logger.Error(ex, "Unable to process Modbus command mapping {CommandName} at address {Address}", mapping.Name, mapping.Address);
+                _logger.Error(
+                    ex,
+                    "Unable to process Modbus command mapping at {RegisterType} {Address}",
+                    firstMapping.RegisterType,
+                    firstMapping.Address);
             }
         }
     }
+
+    private IEnumerable<IGrouping<string, ModbusCommandMapping>> GetCommandGroups() =>
+        _configuration.CommandMappings.GroupBy(GetCommandKey);
 
     private ushort ReadCommandValue(ModbusCommandMapping mapping)
     {
@@ -249,18 +275,23 @@ public sealed class Modbus : IProtocolModule
         };
     }
 
-    private static string GetCommandKey(ModbusCommandMapping mapping) => $"{mapping.RegisterType}:{mapping.Address}";
+    private static string GetCommandKey(ModbusCommandMapping mapping) =>
+        $"{mapping.RegisterType}:{mapping.Address}";
 
     private void UpdateRegisters()
     {
-        if (_slave == null || _configuration.Registers == null)
+        if (_slave == null)
             return;
 
         foreach (var register in _configuration.Registers)
         {
             if (!_dataService.GetGeneratedData(register.DataTemplateId, out var data))
             {
-                _logger.Warning("No generated data found for DataTemplateId {DataTemplateId}", register.DataTemplateId);
+                _logger.Warning(
+                    "No generated data found for Modbus register {Register} at address {Address}. DataTemplateId {DataTemplateId} does not exist.",
+                    register.Name,
+                    register.Address,
+                    register.DataTemplateId);
                 continue;
             }
 
@@ -337,8 +368,8 @@ public sealed class Modbus : IProtocolModule
 
     private void SetUInt32(ModbusRegisterType registerType, ushort address, uint value)
     {
-        ushort highWord = (ushort)(value >> 16);
-        ushort lowWord = (ushort)(value & 0xFFFF);
+        var highWord = (ushort)(value >> 16);
+        var lowWord = (ushort)(value & 0xFFFF);
         WriteRegisters(registerType, address, new[] { highWord, lowWord });
     }
 
