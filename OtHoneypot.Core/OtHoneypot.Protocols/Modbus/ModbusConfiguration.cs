@@ -18,14 +18,3 @@ public class ModbusConfiguration : IModbusConfiguration
     public List<string> AllowedIPs { get; set; }
     public int ReadingInterval { get; set; }
 }
-
-public class ModbusMasterConfiguration
-{
-    public List<ModbusDevice> Devices { get; set; }
-}
-
-public class ModbusSlaveConfiguration
-{
-    public byte UnitId { get; set; } = 1;
-    public List<ModbusRegister> Registers { get; set; }
-}

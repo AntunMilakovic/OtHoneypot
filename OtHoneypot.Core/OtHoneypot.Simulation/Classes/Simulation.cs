@@ -3,7 +3,7 @@ using OtHoneypot.Core.Interfaces;
 
 namespace OtHoneypot.Core.Data;
 
-public class Simulation : ISimulation
+public class Simulation
 {
     public float MinValue { get; set; }
     public float MaxValue { get; set; }
@@ -15,14 +15,4 @@ public class Simulation : ISimulation
 
     public float? ValueChangeRate { get; set; }
     public SimulationType Type { get; set; }
-
-    // public Simulation(SimulationType type, float minValue, float maxValue, int refreshRate, float? valueChangeRate = null)
-    // {
-    //     Type = type;
-    //     MinValue = minValue;
-    //     MaxValue = maxValue;
-    //     RefreshRate = refreshRate;
-    //     ValueChangeRate = valueChangeRate;
-    // }
-    
 }
