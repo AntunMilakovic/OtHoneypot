@@ -1,13 +1,11 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
-using OtHoneypot.Core.Data;
 using OtHoneypot.Core.Interfaces;
-using OtHoneypot.Core.Protocols;
+using OtHoneypot.Service.Factories;
 using Serilog;
 
 namespace OtHoneypot.Service;
@@ -15,43 +13,59 @@ namespace OtHoneypot.Service;
 public class ProtocolService : BackgroundService
 {
     private readonly ILogger _logger;
-    private readonly List<IProtocolModule> _protocolModules;
-
-    private readonly List<string> activeProtocols;
-
     private readonly IOptions<Configuration> _options;
-    private readonly IDataService _dataService;
+    private readonly IProtocolServiceFactory _protocolFactory;
 
-    List<Task> _runningProtocolModules = new List<Task>();
-
-    public ProtocolService(ILogger logger, IDataService dataService, IOptions<Configuration> options)
+    public ProtocolService(
+        ILogger logger,
+        IOptions<Configuration> options,
+        IProtocolServiceFactory protocolFactory)
     {
         _logger = logger;
         _options = options;
-        _dataService = dataService;
-        // this.activeProtocols = activeProtocols;
+        _protocolFactory = protocolFactory;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(
+        CancellationToken stoppingToken)
     {
-        var tasks = new List<Task>();
+        var modules =
+            _protocolFactory.CreateModules(_options.Value);
 
-        foreach (var module in _options.Value.Modbus)
-            tasks.Add(new Modbus(_logger, _dataService, (ModbusConfiguration)module).StartAsync(stoppingToken));
-        
+        var tasks = modules
+            .Select(module =>
+                StartProtocolModuleAsync(
+                    module,
+                    stoppingToken))
+            .ToList();
 
         await Task.WhenAll(tasks);
     }
 
-    private async Task StartProtocolModuleAsync(IProtocolModule module, CancellationToken stoppingToken)
+    private async Task StartProtocolModuleAsync(
+        IProtocolModule module,
+        CancellationToken stoppingToken)
     {
         try
         {
+            _logger.Information(
+                "Starting protocol module {ProtocolName} ({ProtocolType})",
+                module.Name,
+                module.Type);
+
             await module.StartAsync(stoppingToken);
+        }
+        catch (OperationCanceledException)
+            when (stoppingToken.IsCancellationRequested)
+        {
+            // Normal shutdown
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, $"Error starting protocol module {module.Name}");
+            _logger.Error(
+                ex,
+                "Error running protocol module {ProtocolName}",
+                module.Name);
         }
     }
 }

@@ -73,7 +73,7 @@ public class DataService : BackgroundService, IDataService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            RefreshData(_dataTemplates);
+            RefreshData();
             await Task.Delay(1000, stoppingToken);
         }
     }
@@ -103,7 +103,7 @@ public class DataService : BackgroundService, IDataService
         return datas;
     }
 
-    private void RefreshData(List<DataTemplate> dataTemplates)
+    private void RefreshData()
     {
         var dataToRefresh = GetDataIdsWhichNeedsRefresh();
         lock (_lock)
