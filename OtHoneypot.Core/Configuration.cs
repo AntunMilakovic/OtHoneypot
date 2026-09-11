@@ -7,9 +7,11 @@ namespace OtHoneypot.Service;
 
 public class Configuration
 {
-    public List<IProtocolModule> Protocols { get; set; }
+    public List<ModbusConfiguration> Modbus { get; set; } = [];
 
-    public List<ModbusConfiguration> Modbus { get; set; }
-    public List<DataTemplate> DataTemplates { get; set; }
-    public List<string> ActiveProtocols { get; set; }
+    public List<DataTemplate> DataTemplates { get; set; } = [];
+
+    // Future:
+    // public List<Dnp3Configuration> Dnp3 { get; set; } = [];
+    // public List<S7Configuration> S7 { get; set; } = [];
 }
