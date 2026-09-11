@@ -1,7 +1,18 @@
+# Build
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Rider
+.idea/
+
+# Logs
 *.log
-*.dll
-*.cache
-*.exe
-*.AssemblyInfo*.cs
-*obj/*
-*bin/*
+
+# OS
+.DS_Store
+Thumbs.db
