@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,6 +18,7 @@ public sealed class Modbus : IProtocolModule
     private readonly IDataService _dataService;
     private readonly ILogger _logger;
     private readonly Dictionary<string, ushort> _lastCommandValues = new();
+    private readonly HashSet<IPAddress> _activeAlertedAddresses = new();
 
     private IModbusSlave? _slave;
     private TcpListener? _slaveTcpListener;
@@ -145,6 +148,8 @@ public sealed class Modbus : IProtocolModule
         else if (!IPAddress.TryParse(_configuration.BindAddress, out bindAddress!))
             throw new InvalidOperationException($"Invalid bind address: {_configuration.BindAddress}");
 
+        ValidateAllowedIpRules();
+
         _slaveTcpListener = new TcpListener(bindAddress, _configuration.Port);
         _slaveTcpListener.Start();
 
@@ -162,10 +167,11 @@ public sealed class Modbus : IProtocolModule
 
         var listenTask = network.ListenAsync(cancellationToken);
         var updateTask = RunRegisterUpdateLoopAsync(cancellationToken);
+        var alertMonitorTask = RunConnectionAlertMonitorAsync(cancellationToken);
 
         try
         {
-            await Task.WhenAll(listenTask, updateTask);
+            await Task.WhenAll(listenTask, updateTask, alertMonitorTask);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -175,9 +181,79 @@ public sealed class Modbus : IProtocolModule
             _slaveTcpListener.Stop();
             _slaveTcpListener = null;
             _slave = null;
+            _activeAlertedAddresses.Clear();
             _logger.Information("Modbus slave {Name} stopped", Name);
         }
     }
+
+    private async Task RunConnectionAlertMonitorAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                var activeRemoteAddresses = IPGlobalProperties.GetIPGlobalProperties()
+                    .GetActiveTcpConnections()
+                    .Where(connection =>
+                        connection.LocalEndPoint.Port == _configuration.Port &&
+                        connection.State != TcpState.Listen)
+                    .Select(connection => NormalizeAddress(connection.RemoteEndPoint.Address))
+                    .ToHashSet();
+
+                var addressesThatShouldAlert = activeRemoteAddresses
+                    .Where(address => !IsAlertSuppressed(address))
+                    .ToHashSet();
+
+                foreach (var remoteAddress in addressesThatShouldAlert)
+                {
+                    if (!_activeAlertedAddresses.Add(remoteAddress))
+                        continue;
+
+                    _logger.Warning(
+                        "SECURITY ALERT: Connection from {RemoteAddress} to Modbus honeypot {Name} on TCP/{Port}. Source IP is not in AllowedIPs.",
+                        remoteAddress,
+                        Name,
+                        _configuration.Port);
+                }
+
+                _activeAlertedAddresses.RemoveWhere(address => !addressesThatShouldAlert.Contains(address));
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Unable to inspect active TCP connections for Modbus honeypot {Name}", Name);
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+    }
+
+    private bool IsAlertSuppressed(IPAddress remoteAddress)
+    {
+        if (_configuration.AllowedIPs == null || _configuration.AllowedIPs.Count == 0)
+            return false;
+
+        return IpAddressMatcher.IsAllowed(remoteAddress, _configuration.AllowedIPs);
+    }
+
+    private void ValidateAllowedIpRules()
+    {
+        if (_configuration.AllowedIPs == null)
+            return;
+
+        foreach (var rule in _configuration.AllowedIPs)
+        {
+            if (!IpAddressMatcher.IsValidRule(rule))
+            {
+                _logger.Warning(
+                    "Invalid AllowedIPs entry '{AllowedIpRule}' in Modbus configuration {Name}. This entry will not suppress alerts.",
+                    rule,
+                    Name);
+            }
+        }
+    }
+
+    private static IPAddress NormalizeAddress(IPAddress address) =>
+        address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
 
     private async Task RunRegisterUpdateLoopAsync(CancellationToken cancellationToken)
     {
