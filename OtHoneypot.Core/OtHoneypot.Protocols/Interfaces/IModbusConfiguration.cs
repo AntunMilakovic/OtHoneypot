@@ -6,6 +6,6 @@ namespace OtHoneypot.Core.Interfaces;
 public interface IModbusConfiguration : IProtocolConfiguration
 {
     List<ModbusDevice> Devices { get; set; }
-
     List<ModbusRegister> Registers { get; set; }
+    List<ModbusCommandMapping> CommandMappings { get; set; }
 }
