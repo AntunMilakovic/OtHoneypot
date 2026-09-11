@@ -38,9 +38,9 @@ builder.Services.AddSingleton(configuration.GetSection("Honeypot:DataTemplates")
 
 // builder.Services.AddSingleton<DataService>();
 // builder.Services.Configure<ProtocolService>(configuration.GetSection("Mod"));
-builder.Services.AddHostedService<DataService>();
+builder.Services.AddSingleton<DataService>();
 // builder.Services.AddSingleton<Modbus>();
-builder.Services.AddHostedService<ProtocolService>();
+builder.Services.AddSingleton<ProtocolService>();
 
 var host = builder.Build();
 host.Run();

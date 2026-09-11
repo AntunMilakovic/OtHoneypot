@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
+using Microsoft.VisualBasic;
 using OtHoneypot.Core.Data;
 using OtHoneypot.Core.Enums;
 using OtHoneypot.Core.Interfaces;
@@ -32,16 +34,38 @@ public class DataService : BackgroundService, IDataService
         _templateIdToDataMap = _generatedDatas.ToDictionary(d => d.TemplateId, d => d);
     }
 
-    public List<IData> GetGeneratedData(List<int> dataTemplateIds)
+    public List<IData> GetGeneratedDatas(List<int> dataTemplateIds)
     {
         lock (_lock)
             return _generatedDatas.Where(d => dataTemplateIds.Contains(d.TemplateId)).ToList<IData>();
     }
 
-    public List<IData> GetGeneratedData(List<string> dataTemplateNames)
+    public List<IData> GetGeneratedDatas(List<string> dataTemplateNames)
     {
         lock (_lock)
             return _generatedDatas.Where(d => dataTemplateNames.Contains(d.Name)).ToList<IData>();
+    }
+
+    public bool GetGeneratedData(int dataTemplateId, out IData data)
+    {
+        lock (_lock)
+            data = _generatedDatas.FirstOrDefault(d => d.TemplateId == dataTemplateId);
+
+        if (data == null)
+            return false;
+
+        return true;
+    }
+
+    public bool GetGeneratedData(string dataTemplateName, out IData data)
+    {
+        lock (_lock)
+            data = _generatedDatas.FirstOrDefault(d => d.Name == dataTemplateName);
+
+        if (data == null)
+            return false;
+
+        return true;
     }
 
 
@@ -61,7 +85,7 @@ public class DataService : BackgroundService, IDataService
         foreach (var template in dataTemplates)
         {
             float value;
-            switch(template.Simulation.Type)
+            switch (template.Simulation.Type)
             {
                 case SimulationType.Static:
                 case SimulationType.Random:
@@ -70,7 +94,7 @@ public class DataService : BackgroundService, IDataService
                     break;
                 default:
                     _logger.Warning("Simulation type {type} is not implemented.", template.Simulation.Type);
-                    throw new NotImplementedException($"Simulation type {template.Simulation.Type} is not implemented.");   
+                    throw new NotImplementedException($"Simulation type {template.Simulation.Type} is not implemented.");
             }
             var data = new Data(template.Name, template.Id, value, DateTime.UtcNow);
             datas.Add(data);
@@ -94,7 +118,7 @@ public class DataService : BackgroundService, IDataService
             }
             _generatedDatas = _templateIdToDataMap.Values.ToList();
         }
-        if(dataToRefresh.Count > 0)
+        if (dataToRefresh.Count > 0)
             _logger.Information("Refreshed {count} data items at: {time}", dataToRefresh.Count, DateTimeOffset.Now);
     }
 

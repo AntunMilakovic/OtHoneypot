@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("OtHoneypot.Service")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b014cc4d5991b0e1f032fb6df3a3dad7bc4610dd")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+08a0ab7a7f770620afceb6e5735b4a24bfa57aa6")]
 [assembly: System.Reflection.AssemblyProductAttribute("OtHoneypot.Service")]
 [assembly: System.Reflection.AssemblyTitleAttribute("OtHoneypot.Service")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

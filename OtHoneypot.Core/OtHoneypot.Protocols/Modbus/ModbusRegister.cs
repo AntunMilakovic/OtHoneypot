@@ -1,4 +1,5 @@
 namespace OtHoneypot.Core.Protocols;
+
 public class ModbusRegister
 {
     public string Name { get; set; }
@@ -7,9 +8,11 @@ public class ModbusRegister
 
     public ushort Address { get; set; }
 
-    public string DataType { get; set; }
+    public ModbusDataType DataType { get; set; }
 
     public object Value { get; set; }
 
     public bool Writable { get; set; }
+
+    public int DataTemplateId { get; set; }
 }

@@ -17,12 +17,17 @@ public class Modbus : IProtocolModule
     public string Name { get; }
     public ProtocolType Type { get; }
 
-    private readonly ILogger _logger;
+    private bool State;
 
-    public Modbus(ILogger logger, IModbusConfiguration configuration)
+    private readonly ILogger _logger;
+    private readonly IDataService _dataService;
+    private IModbusSlave _slave;
+
+    public Modbus(ILogger logger, IDataService dataService, IModbusConfiguration configuration)
     {
         _configuration = configuration;
         _logger = logger;
+        _dataService = dataService;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -31,24 +36,18 @@ public class Modbus : IProtocolModule
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                var stopwatch = DateTime.UtcNow;
                 await ActLikeModbus(cancellationToken);
-                // Implement the Modbus protocol logic here
-                // For example, you can listen for incoming Modbus requests and respond accordingly
-                // logger.Write("Reading finished in " + DateTime.UtcNow.Subtract(stopwatch).Seconds);
-                var waitSeconds = _configuration.ReadingInterval - DateTime.UtcNow.Subtract(stopwatch).Seconds;
-
-                if (waitSeconds < 0)
-                    continue;
-
                 await Task.Delay(1000, cancellationToken); // Simulate some work being done
             }
 
         }, cancellationToken);
     }
 
-    public async Task ActLikeModbus(CancellationToken cancellationToken)
+    private async Task ActLikeModbus(CancellationToken cancellationToken)
     {
+        if (State == true)
+            return;
+
         if (_configuration.Role == ProtocolRole.Master)
         {
             foreach (var device in _configuration.Devices)
@@ -61,6 +60,7 @@ public class Modbus : IProtocolModule
         {
             // Implement Modbus slave logic here
             // For example, you can use NModbus library to create a Modbus slave and respond to requests from Modbus masters
+            StartModbusTcpSlave(cancellationToken, _configuration);
         }
     }
 
@@ -70,10 +70,11 @@ public class Modbus : IProtocolModule
         return Task.CompletedTask;
     }
 
-    public void ModbusTcpMasterReadInputs(string ip, int port, ushort startAddress, ushort numInputs)
+    public async Task ModbusTcpMasterReadInputs(string ip, int port, ushort startAddress, ushort numInputs)
     {
         try
         {
+            State = true;
             using (TcpClient client = new TcpClient(ip, port))
             {
                 var factory = new ModbusFactory();
@@ -81,20 +82,24 @@ public class Modbus : IProtocolModule
 
                 // read five input values
 
-                bool[] inputs = master.ReadInputs(0, startAddress, numInputs);
+                // bool[] inputs = master.ReadInputs(0, startAddress, numInputs);
+                var plcRegister = await master.ReadInputRegisters32Async(1, startAddress, numInputs);
 
                 for (int i = 0; i < numInputs; i++)
                 {
                     //logger.WriteLine($"Input {(startAddress + i)}={(inputs[i] ? 1 : 0)}");
-                    _logger.Information($"Input {(startAddress + i)}={(inputs[i] ? 1 : 0)}");
+                    _logger.Information($"Input {(startAddress + i)}={plcRegister[i]}");
                 }
+                State = false;
             }
         }
         catch (Exception e)
         {
             //logger.WriteLine("Error: " + e);
             Console.WriteLine("Error: " + e);
+            State = false;
         }
+
     }
 
     /// <summary>
@@ -147,30 +152,208 @@ public class Modbus : IProtocolModule
     /// <summary>
     ///     Simple Modbus TCP slave example.
     /// </summary>
-    public void StartModbusTcpSlave()
+    public async Task StartModbusTcpSlave(CancellationToken cancellationToken, IModbusConfiguration configuration)
     {
-        int port = 502;
-        IPAddress address = new IPAddress(new byte[] { 127, 0, 0, 1 });
+        try
+        {
+            State = true;
+            // create and start the TCP slave
+            TcpListener slaveTcpListener = new TcpListener(configuration.Port);
+            slaveTcpListener.Start();
 
-        // create and start the TCP slave
-        TcpListener slaveTcpListener = new TcpListener(address, port);
-        slaveTcpListener.Start();
+            IModbusFactory factory = new ModbusFactory();
 
-        IModbusFactory factory = new ModbusFactory();
+            IModbusSlaveNetwork network = factory.CreateSlaveNetwork(slaveTcpListener);
 
-        IModbusSlaveNetwork network = factory.CreateSlaveNetwork(slaveTcpListener);
+            if (configuration.Registers.Count == 0)
+            {
+                _logger.Error("There are no configured registers to simulate slave!");
+                return;
+            }
 
-        IModbusSlave slave1 = factory.CreateSlave(1);
-        IModbusSlave slave2 = factory.CreateSlave(2);
+            _slave = factory.CreateSlave(1);
 
-        network.AddSlave(slave1);
-        network.AddSlave(slave2);
 
-        network.ListenAsync().GetAwaiter().GetResult();
+            var listenTask = network.ListenAsync(cancellationToken);
 
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                UpdateRegisters();
+
+                await Task.Delay(
+                    TimeSpan.FromMilliseconds(1000),
+                    cancellationToken);
+            }
+
+        }
+        catch (Exception e)
+        {
+            _logger.Error("Error occured on slave: " + e.ToString());
+            State = false;
+        }
+        finally
+        {
+
+        }
         // prevent the main thread from exiting
-        Thread.Sleep(Timeout.Infinite);
+        // Thread.Sleep(Timeout.Infinite);
+
     }
+
+    private void UpdateRegisters()
+    {
+        if (_slave == null)
+            return;
+
+        foreach (var register in _configuration.Registers)
+        {
+            if (!_dataService.GetGeneratedData(register.DataTemplateId,
+                    out var value))
+                continue;
+
+            SetRegisterValue(register, value);
+        }
+    }
+
+    private void SetRegisterValue(
+    ModbusRegister register,
+    object? value)
+    {
+        if (_slave == null || value == null)
+            return;
+
+        switch (register.DataType)
+        {
+            case ModbusDataType.UInt16:
+                SetUInt16(
+                    register.Type,
+                    register.Address,
+                    Convert.ToUInt16(value));
+                break;
+
+            case ModbusDataType.Int16:
+                SetInt16(
+                    register.Type,
+                    register.Address,
+                    Convert.ToInt16(value));
+                break;
+
+            // case ModbusDataType.UInt32:
+            //     SetUInt32(
+            //         register.Type,
+            //         register.Address,
+            //         Convert.ToUInt32(value));
+            //     break;
+
+            // case ModbusDataType.Int32:
+            //     SetInt32(
+            //         register.Type,
+            //         register.Address,
+            //         Convert.ToInt32(value));
+            //     break;
+
+            case ModbusDataType.Float32:
+                SetFloat32(
+                    register.Type,
+                    register.Address,
+                    Convert.ToSingle(value));
+                break;
+
+            default:
+                throw new NotSupportedException(
+                    $"Unsupported Modbus datatype: {register.DataType}");
+        }
+    }
+
+    private void SetUInt16(
+    ModbusRegisterType registerType,
+    ushort address,
+    ushort value)
+    {
+        if (_slave == null)
+            return;
+
+        switch (registerType)
+        {
+            case ModbusRegisterType.HoldingRegister:
+                _slave.DataStore.HoldingRegisters.WritePoints(
+                    address,
+                    new[] { value });
+                break;
+
+            case ModbusRegisterType.InputRegister:
+                _slave.DataStore.InputRegisters.WritePoints(
+                    address,
+                    new[] { value });
+                break;
+
+            default:
+                throw new InvalidOperationException(
+                    $"{registerType} cannot contain UInt16.");
+        }
+    }
+
+    private void SetInt16(
+    ModbusRegisterType registerType,
+    ushort address,
+    short value)
+    {
+        ushort rawValue = unchecked((ushort)value);
+
+        SetUInt16(
+            registerType,
+            address,
+            rawValue);
+    }
+
+    private void SetFloat32(
+        ModbusRegisterType registerType,
+        ushort address,
+        float value)
+    {
+        uint raw = BitConverter.SingleToUInt32Bits(value);
+
+        ushort highWord = (ushort)(raw >> 16);
+        ushort lowWord = (ushort)(raw & 0xFFFF);
+
+        WriteRegisters(
+            registerType,
+            address,
+            new[]
+            {
+            highWord,
+            lowWord
+            });
+    }
+
+    private void WriteRegisters(
+        ModbusRegisterType registerType,
+        ushort address,
+        ushort[] values)
+    {
+        if (_slave == null)
+            return;
+
+        switch (registerType)
+        {
+            case ModbusRegisterType.HoldingRegister:
+                _slave.DataStore.HoldingRegisters.WritePoints(
+                    address,
+                    values);
+                break;
+
+            case ModbusRegisterType.InputRegister:
+                _slave.DataStore.InputRegisters.WritePoints(
+                    address,
+                    values);
+                break;
+
+            default:
+                throw new InvalidOperationException(
+                    $"Cannot write register values to {registerType}");
+        }
+    }
+
 
     /// <summary>
     ///     Simple Modbus UDP slave example.

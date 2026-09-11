@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using OtHoneypot.Core.Data;
 using OtHoneypot.Core.Interfaces;
 using OtHoneypot.Core.Protocols;
 using Serilog;
@@ -19,13 +20,15 @@ public class ProtocolService : BackgroundService
     private readonly List<string> activeProtocols;
 
     private readonly IOptions<Configuration> _options;
+    private readonly IDataService _dataService;
 
     List<Task> _runningProtocolModules = new List<Task>();
 
-    public ProtocolService(ILogger logger, IOptions<Configuration> options)
+    public ProtocolService(ILogger logger, IDataService dataService, IOptions<Configuration> options)
     {
         _logger = logger;
         _options = options;
+        _dataService = dataService;
         // this.activeProtocols = activeProtocols;
     }
 
@@ -34,7 +37,7 @@ public class ProtocolService : BackgroundService
         var tasks = new List<Task>();
 
         foreach (var module in _options.Value.Modbus)
-            tasks.Add(new Modbus(_logger, (ModbusConfiguration)module).StartAsync(stoppingToken));
+            tasks.Add(new Modbus(_logger, _dataService, (ModbusConfiguration)module).StartAsync(stoppingToken));
         
 
         await Task.WhenAll(tasks);
