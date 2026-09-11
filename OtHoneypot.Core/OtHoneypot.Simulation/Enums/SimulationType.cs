@@ -5,6 +5,7 @@ public enum SimulationType
     Static,
     Random,
     RandomWalk,
+    Dynamic,
     Sine,
     Counter
 }
