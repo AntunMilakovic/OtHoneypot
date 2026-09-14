@@ -154,6 +154,33 @@ Command mappings observe writable slave addresses without blocking or changing n
 
 Several mappings may share one HoldingRegister address, for example `1 = Increase`, `2 = Decrease`, `3 = Hold`, and `4 = Reset`. A mapping triggers only when the address changes to its configured value.
 
+## Runnable master and slave example
+
+Two complete example files are included:
+
+- [`appsettings.Slave.example.json`](../OtHoneypot.Service/appsettings.Slave.example.json) starts `ExamplePLC` on `127.0.0.1:1502`, Unit ID `1`. It exposes TankLevel as Float32 at holding registers 100–101 and Pressure as Float32 at 102–103. Holding register 200 accepts Dynamic commands for TankLevel: `1 = Increase`, `2 = Decrease`, `3 = Hold`, and `4 = Reset`.
+- [`appsettings.Master.example.json`](../OtHoneypot.Service/appsettings.Master.example.json) connects to that slave and parses the four registers starting at address 100 as two `Float32` values in `ABCD` order.
+
+To run both on the same computer, open two terminals. Each process needs its example copied to the active `appsettings.Development.json` before it starts.
+
+Terminal 1 — slave:
+
+```bash
+cp OtHoneypot.Service/appsettings.Slave.example.json OtHoneypot.Service/appsettings.Development.json
+dotnet run --project OtHoneypot.Service
+```
+
+Terminal 2 — master, after the slave has started:
+
+```bash
+cp OtHoneypot.Service/appsettings.Master.example.json OtHoneypot.Service/appsettings.Development.json
+dotnet run --project OtHoneypot.Service
+```
+
+If both processes use the same working tree, copying the second file while the first process is already running is safe: configuration is read during startup and is not reloaded by the application. Alternatively, run each process from a separate checkout.
+
+The master only polls and logs values at present. To test the slave command mappings, use a Modbus client to write one of the command values to holding register 200.
+
 ## Complete minimal example
 
 ```json
