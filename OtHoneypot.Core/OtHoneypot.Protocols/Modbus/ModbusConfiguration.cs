@@ -15,6 +15,7 @@ public class ModbusConfiguration : IModbusConfiguration
     public ProtocolRole Role { get; set; }
     public string BindAddress { get; set; }
     public int Port { get; set; }
+    public byte UnitId { get; set; } = 1;
     public List<string> AllowedIPs { get; set; }
     public int ReadingInterval { get; set; }
 }

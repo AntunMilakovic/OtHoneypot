@@ -10,5 +10,9 @@ public class ModbusPollDefinition
 
     public ushort Count { get; set; }
 
+    public ModbusDataType DataType { get; set; } = ModbusDataType.UInt16;
+
+    public ModbusByteOrder ByteOrder { get; set; } = ModbusByteOrder.ABCD;
+
     public int PollIntervalMs { get; set; }
 }
