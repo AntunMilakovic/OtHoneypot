@@ -19,6 +19,7 @@ public sealed class Modbus : IProtocolModule
     private readonly ILogger _logger;
     private readonly Dictionary<string, ushort> _lastCommandValues = new();
     private readonly HashSet<IPAddress> _activeAlertedAddresses = new();
+    private readonly Dictionary<ModbusScheduledWrite, DateTimeOffset> _nextScheduledWriteTimes = new();
 
     private IModbusSlave? _slave;
     private TcpListener? _slaveTcpListener;
@@ -90,10 +91,80 @@ public sealed class Modbus : IProtocolModule
         var factory = new ModbusFactory();
         using var master = factory.CreateMaster(client);
 
+        ExecuteScheduledWrites(master, device);
+
         foreach (var poll in device.Polls)
         {
             cancellationToken.ThrowIfCancellationRequested();
             ReadPoll(master, device, poll);
+        }
+    }
+
+    private void ExecuteScheduledWrites(IModbusMaster master, ModbusDevice device)
+    {
+        if (device.ScheduledWrites == null || device.ScheduledWrites.Count == 0)
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+
+        foreach (var scheduledWrite in device.ScheduledWrites)
+        {
+            ValidateScheduledWrite(device, scheduledWrite);
+
+            if (!_nextScheduledWriteTimes.TryGetValue(scheduledWrite, out var nextWriteTime))
+            {
+                nextWriteTime = now.AddMilliseconds(scheduledWrite.InitialDelayMs);
+                _nextScheduledWriteTimes[scheduledWrite] = nextWriteTime;
+            }
+
+            if (now < nextWriteTime || nextWriteTime == DateTimeOffset.MaxValue)
+                continue;
+
+            switch (scheduledWrite.RegisterType)
+            {
+                case ModbusRegisterType.HoldingRegister:
+                    master.WriteSingleRegister(device.UnitId, scheduledWrite.Address, scheduledWrite.Value);
+                    break;
+                case ModbusRegisterType.Coil:
+                    master.WriteSingleCoil(device.UnitId, scheduledWrite.Address, scheduledWrite.Value != 0);
+                    break;
+                default:
+                    throw new InvalidOperationException(
+                        $"Scheduled write '{scheduledWrite.Name}' must target a HoldingRegister or Coil.");
+            }
+
+            _logger.Information(
+                "{Device} sent scheduled write {WriteName}: {RegisterType} {Address} = {Value}",
+                device.Name,
+                scheduledWrite.Name,
+                scheduledWrite.RegisterType,
+                scheduledWrite.Address,
+                scheduledWrite.Value);
+
+            _nextScheduledWriteTimes[scheduledWrite] = scheduledWrite.RepeatEveryMs == 0
+                ? DateTimeOffset.MaxValue
+                : now.AddMilliseconds(scheduledWrite.RepeatEveryMs);
+        }
+    }
+
+    private static void ValidateScheduledWrite(ModbusDevice device, ModbusScheduledWrite scheduledWrite)
+    {
+        if (scheduledWrite.InitialDelayMs < 0)
+        {
+            throw new InvalidOperationException(
+                $"Scheduled write '{scheduledWrite.Name}' on device '{device.Name}' cannot have a negative InitialDelayMs.");
+        }
+
+        if (scheduledWrite.RepeatEveryMs < 0)
+        {
+            throw new InvalidOperationException(
+                $"Scheduled write '{scheduledWrite.Name}' on device '{device.Name}' cannot have a negative RepeatEveryMs.");
+        }
+
+        if (scheduledWrite.RegisterType == ModbusRegisterType.Coil && scheduledWrite.Value > 1)
+        {
+            throw new InvalidOperationException(
+                $"Scheduled Coil write '{scheduledWrite.Name}' on device '{device.Name}' must use value 0 or 1.");
         }
     }
 
