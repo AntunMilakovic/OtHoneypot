@@ -74,6 +74,7 @@ Each item in `Honeypot:Modbus` creates one independent module.
 | `UnitId` | byte | no | `1` | Remote slave/unit identifier. |
 | `PollIntervalMs` | integer | no | currently unused | Reserved for a per-device interval. `ReadingInterval` currently controls the polling cycle. |
 | `Polls` | array | yes | — | Register ranges to read. |
+| `ScheduledWrites` | array | no | empty | Holding Register or Coil writes sent according to a timer. |
 
 ### Master polls and parsed values
 
@@ -125,6 +126,46 @@ Example: two Float32 values at addresses 100–103:
 }
 ```
 
+### Master scheduled writes
+
+Each item in a device's `ScheduledWrites` array is evaluated during the normal master polling cycle.
+
+| Option | Type | Required | Values/default | Description |
+|---|---|---:|---|---|
+| `Name` | string | yes | empty | Write name included in logs and error messages. |
+| `RegisterType` | enum | yes | `HoldingRegister` | Must be `HoldingRegister` or `Coil`. |
+| `Address` | unsigned 16-bit integer | yes | `0`–`65535` | Zero-based remote address. |
+| `Value` | unsigned 16-bit integer | yes | `0`–`65535` | Register value. Coil writes accept only `0` or `1`. |
+| `InitialDelayMs` | integer | no | `0`, must be `>= 0` | Delay measured from the first successful connection to the device. |
+| `RepeatEveryMs` | integer | no | `0`, must be `>= 0` | Interval between writes. Zero means that the write runs once. |
+
+The actual timing resolution is limited by the module's `ReadingInterval`, because scheduled writes are checked when the device is polled. For example, with a 1000 ms reading interval, a write scheduled for 5500 ms normally runs during the poll at approximately 6000 ms.
+
+Example that alternates the slave's TankLevel simulation between `Increase` and `Hold`:
+
+```json
+"ScheduledWrites": [
+  {
+    "Name": "StartFilling",
+    "RegisterType": "HoldingRegister",
+    "Address": 200,
+    "Value": 1,
+    "InitialDelayMs": 5000,
+    "RepeatEveryMs": 60000
+  },
+  {
+    "Name": "StopFilling",
+    "RegisterType": "HoldingRegister",
+    "Address": 200,
+    "Value": 3,
+    "InitialDelayMs": 30000,
+    "RepeatEveryMs": 60000
+  }
+]
+```
+
+This produces `Increase` at approximately 5, 65, 125… seconds and `Hold` at approximately 30, 90, 150… seconds. The slave mapping determines what values `1` and `3` mean.
+
 ### Slave registers
 
 | Option | Type | Required | Values/default | Description |
@@ -159,7 +200,7 @@ Several mappings may share one HoldingRegister address, for example `1 = Increas
 Two complete example files are included:
 
 - [`appsettings.Slave.example.json`](../OtHoneypot.Service/appsettings.Slave.example.json) starts `ExamplePLC` on `127.0.0.1:1502`, Unit ID `1`. It exposes TankLevel as Float32 at holding registers 100–101 and Pressure as Float32 at 102–103. Holding register 200 accepts Dynamic commands for TankLevel: `1 = Increase`, `2 = Decrease`, `3 = Hold`, and `4 = Reset`.
-- [`appsettings.Master.example.json`](../OtHoneypot.Service/appsettings.Master.example.json) connects to that slave and parses the four registers starting at address 100 as two `Float32` values in `ABCD` order.
+- [`appsettings.Master.example.json`](../OtHoneypot.Service/appsettings.Master.example.json) connects to that slave, parses the four registers starting at address 100 as two `Float32` values in `ABCD` order, sends `Increase` after 5 seconds, and sends `Hold` after 30 seconds. This 60-second cycle then repeats.
 
 To run both on the same computer, open two terminals. Each process needs its example copied to the active `appsettings.Development.json` before it starts.
 
@@ -179,7 +220,7 @@ dotnet run --project OtHoneypot.Service
 
 If both processes use the same working tree, copying the second file while the first process is already running is safe: configuration is read during startup and is not reloaded by the application. Alternatively, run each process from a separate checkout.
 
-The master only polls and logs values at present. To test the slave command mappings, use a Modbus client to write one of the command values to holding register 200.
+The example master now both polls values and exercises the slave command mappings. You can also use an external Modbus client to write command values to holding register 200 manually.
 
 ## Complete minimal example
 
@@ -241,6 +282,7 @@ The master only polls and logs values at present. To test the slave command mapp
 - A register or command mapping references a missing `DataTemplateId`.
 - `MinValue` is greater than `MaxValue`, `RefreshRate` is not positive, or `ValueChangeRate` is negative.
 - A master `Count` is not divisible by the selected numeric datatype width; for example, `Float32` needs an even count.
+- A scheduled write targets a read-only table, has a negative delay/interval, or writes a Coil value other than `0` or `1`.
 - A slave bit table uses a datatype other than `Bool`.
 - The process lacks permission to listen on TCP/502. Use a higher unprivileged port during development or grant the service the required OS capability.
 - Display addresses such as `40001` are not protocol offsets. Configure the zero-based offset expected by NModbus (often `0` for displayed register `40001`).
