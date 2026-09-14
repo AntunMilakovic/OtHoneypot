@@ -15,4 +15,6 @@ public class ModbusDevice
     public int PollIntervalMs { get; set; }
 
     public List<ModbusPollDefinition> Polls { get; set; } = [];
+
+    public List<ModbusScheduledWrite> ScheduledWrites { get; set; } = [];
 }
