@@ -118,19 +118,32 @@ public sealed class Modbus : IProtocolModule
             case ModbusRegisterType.InputRegister:
             {
                 var values = master.ReadInputRegisters(device.UnitId, poll.StartAddress, poll.Count);
-                for (int i = 0; i < values.Length; i++)
-                    _logger.Information("{Device} InputRegister {Address} = {Value}", device.Name, poll.StartAddress + i, values[i]);
+                LogParsedRegisterValues(device, poll, values);
                 break;
             }
             case ModbusRegisterType.HoldingRegister:
             {
                 var values = master.ReadHoldingRegisters(device.UnitId, poll.StartAddress, poll.Count);
-                for (int i = 0; i < values.Length; i++)
-                    _logger.Information("{Device} HoldingRegister {Address} = {Value}", device.Name, poll.StartAddress + i, values[i]);
+                LogParsedRegisterValues(device, poll, values);
                 break;
             }
             default:
                 throw new NotSupportedException($"Unsupported register type: {poll.RegisterType}");
+        }
+    }
+
+    private void LogParsedRegisterValues(ModbusDevice device, ModbusPollDefinition poll, ushort[] registers)
+    {
+        foreach (var parsed in ModbusValueParser.Parse(poll.StartAddress, registers, poll.DataType, poll.ByteOrder))
+        {
+            _logger.Information(
+                "{Device} {Poll} {RegisterType} {Address} {DataType} = {Value}",
+                device.Name,
+                poll.Name,
+                poll.RegisterType,
+                parsed.Address,
+                parsed.DataType,
+                parsed.Value);
         }
     }
 
@@ -155,7 +168,7 @@ public sealed class Modbus : IProtocolModule
 
         var factory = new ModbusFactory();
         var network = factory.CreateSlaveNetwork(_slaveTcpListener);
-        const byte slaveId = 1;
+        var slaveId = _configuration.UnitId;
 
         _slave = factory.CreateSlave(slaveId);
         network.AddSlave(_slave);
