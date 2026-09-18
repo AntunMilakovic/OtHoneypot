@@ -14,6 +14,9 @@ namespace OtHoneypot.Core.Protocols;
 
 public sealed class Modbus : IProtocolModule
 {
+    private const int MIN_READING_INTERVAL_SECONDS = 10;
+
+    private const int MIN_REGISTER_UPDATE_INTERVAL_SECONDS = 1;
     private readonly IModbusConfiguration _configuration;
     private readonly IDataService _dataService;
     private readonly ILogger _logger;
@@ -78,7 +81,7 @@ public sealed class Modbus : IProtocolModule
                 }
             }
 
-            var interval = _configuration.ReadingInterval > 0 ? _configuration.ReadingInterval : 1000;
+            var interval = _configuration.ReadingInterval > 0 ? _configuration.ReadingInterval : MIN_READING_INTERVAL_SECONDS;
             await Task.Delay(interval, cancellationToken);
         }
     }
@@ -113,7 +116,7 @@ public sealed class Modbus : IProtocolModule
 
             if (!_nextScheduledWriteTimes.TryGetValue(scheduledWrite, out var nextWriteTime))
             {
-                nextWriteTime = now.AddMilliseconds(scheduledWrite.InitialDelayMs);
+                nextWriteTime = now.AddSeconds(scheduledWrite.InitialDelayS);
                 _nextScheduledWriteTimes[scheduledWrite] = nextWriteTime;
             }
 
@@ -141,24 +144,24 @@ public sealed class Modbus : IProtocolModule
                 scheduledWrite.Address,
                 scheduledWrite.Value);
 
-            _nextScheduledWriteTimes[scheduledWrite] = scheduledWrite.RepeatEveryMs == 0
+            _nextScheduledWriteTimes[scheduledWrite] = scheduledWrite.RepeatEveryS == 0
                 ? DateTimeOffset.MaxValue
-                : now.AddMilliseconds(scheduledWrite.RepeatEveryMs);
+                : now.AddSeconds(scheduledWrite.RepeatEveryS);
         }
     }
 
     private static void ValidateScheduledWrite(ModbusDevice device, ModbusScheduledWrite scheduledWrite)
     {
-        if (scheduledWrite.InitialDelayMs < 0)
+        if (scheduledWrite.InitialDelayS < 0)
         {
             throw new InvalidOperationException(
-                $"Scheduled write '{scheduledWrite.Name}' on device '{device.Name}' cannot have a negative InitialDelayMs.");
+                $"Scheduled write '{scheduledWrite.Name}' on device '{device.Name}' cannot have a negative InitialDelayS.");
         }
 
-        if (scheduledWrite.RepeatEveryMs < 0)
+        if (scheduledWrite.RepeatEveryS < 0)
         {
             throw new InvalidOperationException(
-                $"Scheduled write '{scheduledWrite.Name}' on device '{device.Name}' cannot have a negative RepeatEveryMs.");
+                $"Scheduled write '{scheduledWrite.Name}' on device '{device.Name}' cannot have a negative RepeatEveryS.");
         }
 
         if (scheduledWrite.RegisterType == ModbusRegisterType.Coil && scheduledWrite.Value > 1)
@@ -341,7 +344,7 @@ public sealed class Modbus : IProtocolModule
 
     private async Task RunRegisterUpdateLoopAsync(CancellationToken cancellationToken)
     {
-        var interval = _configuration.ReadingInterval > 0 ? _configuration.ReadingInterval : 250;
+        var interval = _configuration.ReadingInterval > 0 ? _configuration.ReadingInterval : MIN_REGISTER_UPDATE_INTERVAL_SECONDS;
 
         while (!cancellationToken.IsCancellationRequested)
         {

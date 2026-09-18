@@ -17,5 +17,8 @@ public interface IProtocolConfiguration
 
     public List<string> AllowedIPs { get; set; }
 
+    /// <summary>
+    /// In seconds
+    /// </summary>
     public int ReadingInterval { get; set; }
 }

@@ -10,10 +10,15 @@ public class ModbusScheduledWrite
 
     public ushort Value { get; set; }
 
-    public int InitialDelayMs { get; set; }
+    /// <summary>
+    /// Initial delay from service startup.
+    /// Number of seconds.
+    /// </summary>
+    public int InitialDelayS { get; set; }
 
     /// <summary>
     /// Interval between writes. A value of zero executes the write only once.
+    /// Number of seconds.
     /// </summary>
-    public int RepeatEveryMs { get; set; }
+    public int RepeatEveryS { get; set; }
 }

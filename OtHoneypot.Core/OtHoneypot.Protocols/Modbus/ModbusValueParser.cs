@@ -93,7 +93,8 @@ public static class ModbusValueParser
 
         if (byteOrder is ModbusByteOrder.CDAB or ModbusByteOrder.DCBA)
         {
-            for (var left = 0, right = result.Length - 2; left < right; left += 2, right -= 2)
+            var right = result.Length - 2;
+            for (var left = 0; left < right; left += 2, right -= 2)
             {
                 (result[left], result[right]) = (result[right], result[left]);
                 (result[left + 1], result[right + 1]) = (result[right + 1], result[left + 1]);

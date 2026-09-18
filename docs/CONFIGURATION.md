@@ -2,6 +2,38 @@
 
 The application reads configuration from `OtHoneypot.Service/appsettings.json`. Environment-specific files such as `appsettings.Development.json` override matching values. Enum values are written as their names and are case-insensitive.
 
+## Build and publish service
+In root of a solution, run this command
+dotnet publish OtHoneypot.slnx -c Release --self-contained true -r linux-x64  -o ../OtHoneypotPublish
+
+This is script used to run on linux as service
+
+[Unit]
+Description=OT Honeypot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/vepar/OtHoneypot
+ExecStart=/home/vepar/OtHoneypot/OtHoneypot.Service
+
+Restart=always
+RestartSec=5
+
+User=root
+
+Environment=DOTNET_ENVIRONMENT=Production
+
+SyslogIdentifier=othoneypot
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+
+
 ## Top-level sections
 
 | Path | Type | Required | Description |
@@ -59,7 +91,7 @@ Each item in `Honeypot:Modbus` creates one independent module.
 | `Port` | integer | slave | conventionally `502` | slave | Listening TCP port. Ports below 1024 may require elevated OS privileges. |
 | `UnitId` | byte | no | `1` | slave | Slave/unit identifier, from 0 through 255. |
 | `AllowedIPs` | string array | no | empty | slave | IPs/CIDRs for which the security warning is suppressed. It never blocks traffic. Empty means every connection produces an alert. |
-| `ReadingInterval` | integer | no | master `1000`, slave `250` | both | Delay in milliseconds between master polling cycles or slave register/command scans. Values `<= 0` use the role-specific fallback. |
+| `ReadingInterval` | integer | no | master `1000`, slave `250` | both | Delay in seconds between master polling cycles or slave register/command scans. Values `<= 0` use the role-specific fallback. |
 | `Devices` | array | master | empty | master | Remote slaves to poll. |
 | `Registers` | array | slave | empty | slave | Simulated slave register map. |
 | `CommandMappings` | array | slave | empty | slave | Writable values mapped to Dynamic simulation commands. |
@@ -136,8 +168,8 @@ Each item in a device's `ScheduledWrites` array is evaluated during the normal m
 | `RegisterType` | enum | yes | `HoldingRegister` | Must be `HoldingRegister` or `Coil`. |
 | `Address` | unsigned 16-bit integer | yes | `0`–`65535` | Zero-based remote address. |
 | `Value` | unsigned 16-bit integer | yes | `0`–`65535` | Register value. Coil writes accept only `0` or `1`. |
-| `InitialDelayMs` | integer | no | `0`, must be `>= 0` | Delay measured from the first successful connection to the device. |
-| `RepeatEveryMs` | integer | no | `0`, must be `>= 0` | Interval between writes. Zero means that the write runs once. |
+| `InitialDelayS` | integer | no | `0`, must be `>= 0` | Delay measured from the first successful connection to the device. In seconds. |
+| `RepeatEveryS` | integer | no | `0`, must be `>= 0` | Interval between writes. Zero means that the write runs once. In seconds. |
 
 The actual timing resolution is limited by the module's `ReadingInterval`, because scheduled writes are checked when the device is polled. For example, with a 1000 ms reading interval, a write scheduled for 5500 ms normally runs during the poll at approximately 6000 ms.
 
@@ -150,16 +182,16 @@ Example that alternates the slave's TankLevel simulation between `Increase` and 
     "RegisterType": "HoldingRegister",
     "Address": 200,
     "Value": 1,
-    "InitialDelayMs": 5000,
-    "RepeatEveryMs": 60000
+    "InitialDelayS": 5000,
+    "RepeatEveryS": 60000
   },
   {
     "Name": "StopFilling",
     "RegisterType": "HoldingRegister",
     "Address": 200,
     "Value": 3,
-    "InitialDelayMs": 30000,
-    "RepeatEveryMs": 60000
+    "InitialDelayS": 30000,
+    "RepeatEveryS": 60000
   }
 ]
 ```
