@@ -75,31 +75,20 @@ public sealed class Modbus : IProtocolModule
                     break;
 
                 if (device.Polls == null || device.Polls.Count == 0)
-                    continue;    
+                    continue;
 
                 var pollIntervalSeconds = device.PollIntervalS > 0 ? device.PollIntervalS : MIN_READING_INTERVAL_SECONDS;
-                
+
                 if (devIdToLastPollTimeTask.TryGetValue(device.UnitId, out var lastPollInfo))
                 {
-                    if(!lastPollInfo.pollTask.IsCompleted)
-                        continue;                    
-                    if(DateTime.UtcNow - lastPollInfo.lastPollTime < TimeSpan.FromSeconds(pollIntervalSeconds))
+                    if (!lastPollInfo.pollTask.IsCompleted)
+                        continue;
+                    if (DateTime.UtcNow - lastPollInfo.lastPollTime < TimeSpan.FromSeconds(pollIntervalSeconds))
                         continue;
                 }
 
-                try
-                {
-                    var pollTask = PollDeviceAsync(device, cancellationToken);
-                    devIdToLastPollTimeTask[device.UnitId] = (DateTime.UtcNow, pollTask);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error(ex, "Error polling Modbus device {Device} at {IP}:{Port}", device.Name, device.IPAddress, device.Port);
-                }
+                var pollTask = PollDeviceAsync(device, cancellationToken);
+                devIdToLastPollTimeTask[device.UnitId] = (DateTime.UtcNow, pollTask);
             }
 
             // Execute scheduled writes
@@ -108,34 +97,23 @@ public sealed class Modbus : IProtocolModule
                 if (cancellationToken.IsCancellationRequested)
                     break;
 
-                if(scheduledWrite.InitialDelayS > 0 && DateTime.UtcNow - startUpTime < TimeSpan.FromSeconds(scheduledWrite.InitialDelayS))
+                if (scheduledWrite.InitialDelayS > 0 && DateTime.UtcNow - startUpTime < TimeSpan.FromSeconds(scheduledWrite.InitialDelayS))
                     continue;
-                
-                if(devIdToLastCommandTimeTask.TryGetValue((deviceId, scheduledWrite.Name), out var lastCommandInfo))
+
+                if (devIdToLastCommandTimeTask.TryGetValue((deviceId, scheduledWrite.Name), out var lastCommandInfo))
                 {
-                    if(!lastCommandInfo.commandTask.IsCompleted)
+                    if (!lastCommandInfo.commandTask.IsCompleted)
                         continue;
-                    if(DateTime.UtcNow - lastCommandInfo.lastCommandTime < TimeSpan.FromSeconds(scheduledWrite.RepeatEveryS))
+                    if (DateTime.UtcNow - lastCommandInfo.lastCommandTime < TimeSpan.FromSeconds(scheduledWrite.RepeatEveryS))
                         continue;
                 }
-                
+
                 var device = _configuration.Devices.FirstOrDefault(d => d.UnitId == deviceId);
                 if (device == null)
                     continue;
 
-                try
-                {
-                    var commandTask = CommandDeviceAsync(device, scheduledWrite, cancellationToken);
-                    devIdToLastCommandTimeTask[(deviceId, scheduledWrite.Name)] = (DateTime.UtcNow, commandTask);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error(ex, "Error sending commands to Modbus device {Device} at {IP}:{Port}", device.Name, device.IPAddress, device.Port);
-                }
+                var commandTask = CommandDeviceAsync(device, scheduledWrite, cancellationToken);
+                devIdToLastCommandTimeTask[(deviceId, scheduledWrite.Name)] = (DateTime.UtcNow, commandTask);
             }
 
             // var interval = _configuration.ReadingInterval > 0 ? _configuration.ReadingInterval : MIN_READING_INTERVAL_SECONDS;
@@ -178,29 +156,51 @@ public sealed class Modbus : IProtocolModule
         return deviceIdToIntervalMap;
     }
 
-        private async Task CommandDeviceAsync(ModbusDevice device, ModbusScheduledWrite scheduledWrite, CancellationToken cancellationToken)
+    private async Task CommandDeviceAsync(ModbusDevice device, ModbusScheduledWrite scheduledWrite, CancellationToken cancellationToken)
     {
-        using var client = new TcpClient();
-        await client.ConnectAsync(device.IPAddress, device.Port, cancellationToken);
+        try
+        {
+            using var client = new TcpClient();
+            await client.ConnectAsync(device.IPAddress, device.Port, cancellationToken);
 
-        var factory = new ModbusFactory();
-        using var master = factory.CreateMaster(client);
+            var factory = new ModbusFactory();
+            using var master = factory.CreateMaster(client);
 
-        ExecuteWrite(master, device, scheduledWrite);
+            ExecuteWrite(master, device, scheduledWrite);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error sending commands to Modbus device {Device} at {IP}:{Port}", device.Name, device.IPAddress, device.Port);
+        }
     }
 
     private async Task PollDeviceAsync(ModbusDevice device, CancellationToken cancellationToken)
     {
-        using var client = new TcpClient();
-        await client.ConnectAsync(device.IPAddress, device.Port, cancellationToken);
-
-        var factory = new ModbusFactory();
-        using var master = factory.CreateMaster(client);
-
-        foreach (var poll in device.Polls)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            ReadPoll(master, device, poll);
+            using var client = new TcpClient();
+            await client.ConnectAsync(device.IPAddress, device.Port, cancellationToken);
+
+            var factory = new ModbusFactory();
+            using var master = factory.CreateMaster(client);
+
+            foreach (var poll in device.Polls)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ReadPoll(master, device, poll);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error polling Modbus device {Device} at {IP}:{Port}", device.Name, device.IPAddress, device.Port);
         }
     }
 
@@ -301,31 +301,31 @@ public sealed class Modbus : IProtocolModule
         switch (poll.RegisterType)
         {
             case ModbusRegisterType.Coil:
-            {
-                var values = master.ReadCoils(device.UnitId, poll.StartAddress, poll.Count);
-                for (int i = 0; i < values.Length; i++)
-                    _logger.Information("{Device} Coil {Address} = {Value}", device.Name, poll.StartAddress + i, values[i]);
-                break;
-            }
+                {
+                    var values = master.ReadCoils(device.UnitId, poll.StartAddress, poll.Count);
+                    for (int i = 0; i < values.Length; i++)
+                        _logger.Information("{Device} Coil {Address} = {Value}", device.Name, poll.StartAddress + i, values[i]);
+                    break;
+                }
             case ModbusRegisterType.DiscreteInput:
-            {
-                var values = master.ReadInputs(device.UnitId, poll.StartAddress, poll.Count);
-                for (int i = 0; i < values.Length; i++)
-                    _logger.Information("{Device} DiscreteInput {Address} = {Value}", device.Name, poll.StartAddress + i, values[i]);
-                break;
-            }
+                {
+                    var values = master.ReadInputs(device.UnitId, poll.StartAddress, poll.Count);
+                    for (int i = 0; i < values.Length; i++)
+                        _logger.Information("{Device} DiscreteInput {Address} = {Value}", device.Name, poll.StartAddress + i, values[i]);
+                    break;
+                }
             case ModbusRegisterType.InputRegister:
-            {
-                var values = master.ReadInputRegisters(device.UnitId, poll.StartAddress, poll.Count);
-                LogParsedRegisterValues(device, poll, values);
-                break;
-            }
+                {
+                    var values = master.ReadInputRegisters(device.UnitId, poll.StartAddress, poll.Count);
+                    LogParsedRegisterValues(device, poll, values);
+                    break;
+                }
             case ModbusRegisterType.HoldingRegister:
-            {
-                var values = master.ReadHoldingRegisters(device.UnitId, poll.StartAddress, poll.Count);
-                LogParsedRegisterValues(device, poll, values);
-                break;
-            }
+                {
+                    var values = master.ReadHoldingRegisters(device.UnitId, poll.StartAddress, poll.Count);
+                    LogParsedRegisterValues(device, poll, values);
+                    break;
+                }
             default:
                 throw new NotSupportedException($"Unsupported register type: {poll.RegisterType}");
         }
