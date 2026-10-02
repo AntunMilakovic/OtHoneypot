@@ -16,7 +16,9 @@ public sealed class Modbus : IProtocolModule
 {
     private const int MIN_READING_INTERVAL_SECONDS = 10;
 
-    private const int MIN_REGISTER_UPDATE_INTERVAL_SECONDS = 1;
+    private const int CHECK_INTERVAL_SECONDS = 1;
+
+    private const int MIN_REGISTER_UPDATE_INTERVAL_MILISECONDS = 1000;
     private readonly IModbusConfiguration _configuration;
     private readonly IDataService _dataService;
     private readonly ILogger _logger;
@@ -60,16 +62,29 @@ public sealed class Modbus : IProtocolModule
 
     private async Task RunMasterAsync(CancellationToken cancellationToken)
     {
+        var startUpTime = DateTime.UtcNow;
+        var devIdToLastPollTimeTask = new Dictionary<int, (DateTime lastPollTime, Task pollTask)>();
+        var devIdToLastCommandTimeTask = new Dictionary<(int deviceId, string scheduledWriteName), (DateTime lastCommandTime, Task commandTask)>();
+        var devIdScheduledWrites = GetDeviceIdScheduledWrites();
         while (!cancellationToken.IsCancellationRequested)
         {
+            // Execute polls
             foreach (var device in _configuration.Devices)
             {
                 if (cancellationToken.IsCancellationRequested)
                     break;
 
+                var pollIntervalSeconds = device.PollIntervalS > 0 ? device.PollIntervalS : MIN_READING_INTERVAL_SECONDS;                    
+                
+                if (devIdToLastPollTimeTask.TryGetValue(device.UnitId, out var lastPollInfo))
+                    if(DateTime.UtcNow - lastPollInfo.lastPollTime < TimeSpan.FromSeconds(pollIntervalSeconds))
+                        continue;
+
                 try
                 {
-                    await PollDeviceAsync(device, cancellationToken);
+                    var pollTask = PollDeviceAsync(device, cancellationToken);
+                    pollTask.Start();
+                    devIdToLastPollTimeTask[device.UnitId] = (DateTime.UtcNow, pollTask);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -81,9 +96,88 @@ public sealed class Modbus : IProtocolModule
                 }
             }
 
-            var interval = _configuration.ReadingInterval > 0 ? _configuration.ReadingInterval : MIN_READING_INTERVAL_SECONDS;
-            await Task.Delay(interval, cancellationToken);
+            // Execute scheduled writes
+            foreach (var (deviceId, scheduledWrite) in devIdScheduledWrites)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                    break;
+
+                if(scheduledWrite.InitialDelayS > 0 && DateTime.UtcNow - startUpTime < TimeSpan.FromSeconds(scheduledWrite.InitialDelayS))
+                    continue;
+                
+                if(devIdToLastCommandTimeTask.TryGetValue((deviceId, scheduledWrite.Name), out var lastCommandInfo))
+                    if(DateTime.UtcNow - lastCommandInfo.lastCommandTime < TimeSpan.FromSeconds(scheduledWrite.RepeatEveryS))
+                        continue;
+                
+                var device = _configuration.Devices.FirstOrDefault(d => d.UnitId == deviceId);
+                if (device == null)
+                    continue;
+
+                try
+                {
+                    var commandTask = CommandDeviceAsync(device, scheduledWrite, cancellationToken);
+                    commandTask.Start();
+                    devIdToLastCommandTimeTask[(deviceId, scheduledWrite.Name)] = (DateTime.UtcNow, commandTask);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Error sending commands to Modbus device {Device} at {IP}:{Port}", device.Name, device.IPAddress, device.Port);
+                }
+            }
+
+            // var interval = _configuration.ReadingInterval > 0 ? _configuration.ReadingInterval : MIN_READING_INTERVAL_SECONDS;
+            // await Task.Delay(interval, cancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(CHECK_INTERVAL_SECONDS), cancellationToken);
         }
+    }
+
+    private List<(int deviceId, ModbusScheduledWrite scheduledWrite)> GetDeviceIdScheduledWrites()
+    {
+        var deviceIdScheduledWrites = new List<(int deviceId, ModbusScheduledWrite scheduledWrite)>();
+
+        foreach (var device in _configuration.Devices)
+        {
+            if (device.ScheduledWrites == null || device.ScheduledWrites.Count == 0)
+                continue;
+
+            foreach (var scheduledWrite in device.ScheduledWrites)
+            {
+                ValidateScheduledWrite(device, scheduledWrite);
+                deviceIdScheduledWrites.Add((device.UnitId, scheduledWrite));
+            }
+        }
+
+        return deviceIdScheduledWrites;
+    }
+
+    private Dictionary<int, int> GetDeviceIdToIntervalMap()
+    {
+        var deviceIdToIntervalMap = new Dictionary<int, int>();
+        foreach (var device in _configuration.Devices)
+        {
+            if (deviceIdToIntervalMap.ContainsKey(device.UnitId))
+            {
+                _logger.Warning("Duplicate UnitId {UnitId} found for devices {Device1} and {Device2}. Using the first occurrence.", device.UnitId, deviceIdToIntervalMap[device.UnitId], device.Name);
+                continue;
+            }
+            deviceIdToIntervalMap[device.UnitId] = device.PollIntervalS;
+        }
+        return deviceIdToIntervalMap;
+    }
+
+        private async Task CommandDeviceAsync(ModbusDevice device, ModbusScheduledWrite scheduledWrite, CancellationToken cancellationToken)
+    {
+        using var client = new TcpClient();
+        await client.ConnectAsync(device.IPAddress, device.Port, cancellationToken);
+
+        var factory = new ModbusFactory();
+        using var master = factory.CreateMaster(client);
+
+        ExecuteWrite(master, device, scheduledWrite);
     }
 
     private async Task PollDeviceAsync(ModbusDevice device, CancellationToken cancellationToken)
@@ -94,13 +188,35 @@ public sealed class Modbus : IProtocolModule
         var factory = new ModbusFactory();
         using var master = factory.CreateMaster(client);
 
-        ExecuteScheduledWrites(master, device);
-
         foreach (var poll in device.Polls)
         {
             cancellationToken.ThrowIfCancellationRequested();
             ReadPoll(master, device, poll);
         }
+    }
+
+    private void ExecuteWrite(IModbusMaster master, ModbusDevice device, ModbusScheduledWrite scheduledWrite)
+    {
+        switch (scheduledWrite.RegisterType)
+        {
+            case ModbusRegisterType.HoldingRegister:
+                master.WriteSingleRegister(device.UnitId, scheduledWrite.Address, scheduledWrite.Value);
+                break;
+            case ModbusRegisterType.Coil:
+                master.WriteSingleCoil(device.UnitId, scheduledWrite.Address, scheduledWrite.Value != 0);
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"Scheduled write '{scheduledWrite.Name}' must target a HoldingRegister or Coil.");
+        }
+
+        _logger.Information(
+            "{Device} sent scheduled write {WriteName}: {RegisterType} {Address} = {Value}",
+            device.Name,
+            scheduledWrite.Name,
+            scheduledWrite.RegisterType,
+            scheduledWrite.Address,
+            scheduledWrite.Value);
     }
 
     private void ExecuteScheduledWrites(IModbusMaster master, ModbusDevice device)
@@ -344,13 +460,11 @@ public sealed class Modbus : IProtocolModule
 
     private async Task RunRegisterUpdateLoopAsync(CancellationToken cancellationToken)
     {
-        var interval = _configuration.ReadingInterval > 0 ? _configuration.ReadingInterval : MIN_REGISTER_UPDATE_INTERVAL_SECONDS;
-
         while (!cancellationToken.IsCancellationRequested)
         {
             ProcessCommandMappings();
             UpdateRegisters();
-            await Task.Delay(interval, cancellationToken);
+            await Task.Delay(MIN_REGISTER_UPDATE_INTERVAL_MILISECONDS, cancellationToken);
         }
     }
 

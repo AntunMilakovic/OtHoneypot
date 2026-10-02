@@ -8,14 +8,13 @@ public class ModbusConfiguration : IModbusConfiguration
     public List<ModbusDevice> Devices { get; set; } = new();
     public List<ModbusRegister> Registers { get; set; } = new();
     public List<ModbusCommandMapping> CommandMappings { get; set; } = new();
-    public string Name { get; set; }
-    public string Description { get; set; }
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "SCADA";
     public bool Enabled { get; set; }
     public ProtocolType Type { get; set; }
     public ProtocolRole Role { get; set; }
-    public string BindAddress { get; set; }
+    public string BindAddress { get; set; } = "0.0.0.0";
     public int Port { get; set; }
     public byte UnitId { get; set; } = 1;
-    public List<string> AllowedIPs { get; set; }
-    public int ReadingInterval { get; set; }
+    public List<string> AllowedIPs { get; set; } = new List<string>();
 }

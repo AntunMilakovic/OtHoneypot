@@ -2,17 +2,23 @@ using System.Collections.Generic;
 
 namespace OtHoneypot.Core.Protocols;
 
+/// <summary>
+/// Configured on master side. Represents a Modbus device (slave) that can be polled for data or have scheduled writes performed on it.
+/// </summary>
 public class ModbusDevice
 {
-    public string Name { get; set; }
+    public string Name { get; set; } = "PLC";
 
-    public string IPAddress { get; set; }
+    public string IPAddress { get; set; } = "0.0.0.0";
 
     public int Port { get; set; } = 502;
 
     public byte UnitId { get; set; } = 1;
 
-    public int PollIntervalMs { get; set; }
+    /// <summary>
+    /// In seconds
+    /// </summary>
+    public int PollIntervalS { get; set; }
 
     public List<ModbusPollDefinition> Polls { get; set; } = [];
 

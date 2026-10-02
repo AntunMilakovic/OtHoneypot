@@ -2,7 +2,7 @@ namespace OtHoneypot.Core.Protocols;
 
 public class ModbusPollDefinition
 {
-    public string Name { get; set; }
+    public string Name { get; set; } = "Register";
 
     public ModbusRegisterType RegisterType { get; set; }
 
@@ -14,5 +14,4 @@ public class ModbusPollDefinition
 
     public ModbusByteOrder ByteOrder { get; set; } = ModbusByteOrder.ABCD;
 
-    public int PollIntervalMs { get; set; }
 }
