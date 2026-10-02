@@ -3,10 +3,13 @@
 The application reads configuration from `OtHoneypot.Service/appsettings.json`. Environment-specific files such as `appsettings.Development.json` override matching values. Enum values are written as their names and are case-insensitive.
 
 ## Build and publish service
-In root of a solution, run this command
+
+In root of a solution, run this command:
+
 dotnet publish OtHoneypot.slnx -c Release --self-contained true -r linux-x64  -o ../OtHoneypotPublish
 
-This is script used to run on linux as service
+
+## Script to run on linux as service
 
 [Unit]
 Description=OT Honeypot
