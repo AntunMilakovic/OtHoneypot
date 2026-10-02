@@ -168,8 +168,7 @@ public sealed class Modbus : IProtocolModule
             return;
 
         _logger.Information($"Modbus module {_configuration.Name} heartbeat: " +
-            $"Successful Polls: {Interlocked.Read(ref _successfulPolls)}, " +
-            $"Failed Polls: {Interlocked.Read(ref _failedPolls)}, Successful Processed commands: {Interlocked.Read(ref _successfulProcessedCommands)}, " +
+            $"Successful Processed commands: {Interlocked.Read(ref _successfulProcessedCommands)}, " +
             $"Failed Commands: {Interlocked.Read(ref _failedProcessedCommands)}");
 
         _lastStatisticsSlaveLogTime = DateTime.UtcNow;
