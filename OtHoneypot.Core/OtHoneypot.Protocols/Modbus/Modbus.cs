@@ -28,11 +28,15 @@ public sealed class Modbus : IProtocolModule
 
     // Statistics for logging and monitoring purposes
     DateTime _lastStatisticsLogTime = DateTime.UtcNow;
+    DateTime _lastStatisticsSlaveLogTime = DateTime.UtcNow;
     private const int STATISTICS_LOG_INTERVAL_MINUTES = 5;
-    private long _succesfulPolls = 0;
+    private long _successfulPolls = 0;
     private long _failedPolls = 0;
-    private long _succesfulCommands = 0;
-    private long _failedCommands = 0;
+    private long _successfulWrites = 0;
+    private long _failedWrites = 0;
+
+    private long _successfulProcessedCommands = 0;
+    private long _failedProcessedCommands = 0;
 
     private IModbusSlave? _slave;
     private TcpListener? _slaveTcpListener;
@@ -150,10 +154,25 @@ public sealed class Modbus : IProtocolModule
         if(DateTime.UtcNow - _lastStatisticsLogTime < TimeSpan.FromMinutes(STATISTICS_LOG_INTERVAL_MINUTES))
             return;
 
-        _logger.Information($"Modbus module {_configuration.Name} heartbeat: Successful Polls: {Interlocked.Read(ref _succesfulPolls)}, " +
-        "Failed Polls: {Interlocked.Read(ref _failedPolls)}, Successful Commands: {Interlocked.Read(ref _succesfulCommands)}, " +
-        "Failed Commands: {Interlocked.Read(ref _failedCommands)}");
+        _logger.Information($"Modbus module {_configuration.Name} heartbeat: " +
+            $"Successful polls: {Interlocked.Read(ref _successfulPolls)}, " +
+            $"Failed polls: {Interlocked.Read(ref _failedPolls)}, Successful writes: {Interlocked.Read(ref _successfulWrites)}, " +
+            $"Failed writes: {Interlocked.Read(ref _failedWrites)}");
+
         _lastStatisticsLogTime = DateTime.UtcNow;
+    }
+
+    void HeartbeatLoggerSlave()
+    {
+        if(DateTime.UtcNow - _lastStatisticsSlaveLogTime < TimeSpan.FromMinutes(STATISTICS_LOG_INTERVAL_MINUTES))
+            return;
+
+        _logger.Information($"Modbus module {_configuration.Name} heartbeat: " +
+            $"Successful Polls: {Interlocked.Read(ref _successfulPolls)}, " +
+            $"Failed Polls: {Interlocked.Read(ref _failedPolls)}, Successful Processed commands: {Interlocked.Read(ref _successfulProcessedCommands)}, " +
+            $"Failed Commands: {Interlocked.Read(ref _failedProcessedCommands)}");
+
+        _lastStatisticsSlaveLogTime = DateTime.UtcNow;
     }
 
     bool CheckIfPollTaskIsRunningOnDevice(Dictionary<int, (DateTime lastPollTime, Task pollTask)> devIdToLastPollTimeTask, byte deviceId)
@@ -224,7 +243,7 @@ public sealed class Modbus : IProtocolModule
         }
         catch (Exception ex)
         {
-            Interlocked.Increment(ref _failedCommands);
+            Interlocked.Increment(ref _failedWrites);
             _logger.Error(ex, "Error sending commands to Modbus device {Device} at {IP}:{Port}", device.Name, device.IPAddress, device.Port);
         }
     }
@@ -245,7 +264,7 @@ public sealed class Modbus : IProtocolModule
                 ReadPoll(master, device, poll);
             }
 
-            Interlocked.Increment(ref _succesfulPolls);
+            Interlocked.Increment(ref _successfulPolls);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -269,12 +288,11 @@ public sealed class Modbus : IProtocolModule
                 master.WriteSingleCoil(device.UnitId, scheduledWrite.Address, scheduledWrite.Value != 0);
                 break;
             default:
-                Interlocked.Increment(ref _failedCommands);
                 throw new InvalidOperationException(
                     $"Scheduled write '{scheduledWrite.Name}' must target a HoldingRegister or Coil.");
         }
 
-        Interlocked.Increment(ref _succesfulCommands);
+        Interlocked.Increment(ref _successfulWrites);
         _logger.Debug(
             "{Device} sent scheduled write {WriteName}: {RegisterType} {Address} = {Value}",
             device.Name,
@@ -527,6 +545,7 @@ public sealed class Modbus : IProtocolModule
     {
         while (!cancellationToken.IsCancellationRequested)
         {
+            HeartbeatLoggerSlave();
             ProcessCommandMappings();
             UpdateRegisters();
             await Task.Delay(MIN_REGISTER_UPDATE_INTERVAL_MILISECONDS, cancellationToken);
@@ -568,13 +587,13 @@ public sealed class Modbus : IProtocolModule
                     continue;
                 }
                 
-                Interlocked.Increment(ref _succesfulCommands);
+                Interlocked.Increment(ref _successfulProcessedCommands);
                 _logger.Debug("Modbus command {CommandName} ({Command}) received at {RegisterType} {Address} with value {Value}",
                     mapping.Name, mapping.Command, mapping.RegisterType, mapping.Address, currentValue);
             }
             catch (Exception ex)
             {
-                Interlocked.Increment(ref _failedCommands);
+                Interlocked.Increment(ref _failedProcessedCommands);
                 _logger.Error(ex, "Unable to process Modbus command mapping {CommandName} at address {Address}", mapping.Name, mapping.Address);
             }
         }
