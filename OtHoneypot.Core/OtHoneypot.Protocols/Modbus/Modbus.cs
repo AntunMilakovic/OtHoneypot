@@ -74,16 +74,22 @@ public sealed class Modbus : IProtocolModule
                 if (cancellationToken.IsCancellationRequested)
                     break;
 
-                var pollIntervalSeconds = device.PollIntervalS > 0 ? device.PollIntervalS : MIN_READING_INTERVAL_SECONDS;                    
+                if (device.Polls == null || device.Polls.Count == 0)
+                    continue;    
+
+                var pollIntervalSeconds = device.PollIntervalS > 0 ? device.PollIntervalS : MIN_READING_INTERVAL_SECONDS;
                 
                 if (devIdToLastPollTimeTask.TryGetValue(device.UnitId, out var lastPollInfo))
+                {
+                    if(!lastPollInfo.pollTask.IsCompleted)
+                        continue;                    
                     if(DateTime.UtcNow - lastPollInfo.lastPollTime < TimeSpan.FromSeconds(pollIntervalSeconds))
                         continue;
+                }
 
                 try
                 {
                     var pollTask = PollDeviceAsync(device, cancellationToken);
-                    pollTask.Start();
                     devIdToLastPollTimeTask[device.UnitId] = (DateTime.UtcNow, pollTask);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -106,8 +112,12 @@ public sealed class Modbus : IProtocolModule
                     continue;
                 
                 if(devIdToLastCommandTimeTask.TryGetValue((deviceId, scheduledWrite.Name), out var lastCommandInfo))
+                {
+                    if(!lastCommandInfo.commandTask.IsCompleted)
+                        continue;
                     if(DateTime.UtcNow - lastCommandInfo.lastCommandTime < TimeSpan.FromSeconds(scheduledWrite.RepeatEveryS))
                         continue;
+                }
                 
                 var device = _configuration.Devices.FirstOrDefault(d => d.UnitId == deviceId);
                 if (device == null)
@@ -116,7 +126,6 @@ public sealed class Modbus : IProtocolModule
                 try
                 {
                     var commandTask = CommandDeviceAsync(device, scheduledWrite, cancellationToken);
-                    commandTask.Start();
                     devIdToLastCommandTimeTask[(deviceId, scheduledWrite.Name)] = (DateTime.UtcNow, commandTask);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
