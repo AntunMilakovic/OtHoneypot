@@ -13,7 +13,7 @@ namespace OtHoneypot.Service;
 
 public class DataService : BackgroundService, IDataService
 {
-    private const int ServiceLoopDelayMs = 250;
+    private const int SERVICE_INTERVAL_SECONDS = 1;
 
     private readonly ILogger _logger;
     private readonly Dictionary<int, DataTemplate> _templatesById;
@@ -22,6 +22,14 @@ public class DataService : BackgroundService, IDataService
     private readonly Dictionary<int, SimulationCommand> _simulationCommands;
     private readonly object _sync = new();
     private readonly Random _random = new();
+
+    // Statistics for logging and monitoring purposes
+    DateTime _lastStatisticsLogTime = DateTime.UtcNow;
+    private const int STATISTICS_LOG_INTERVAL_MINUTES = 5;
+    private long _generatedDatas = 0;
+    private long _failedPassedDatas = 0;
+    private long _succesPassedDatas = 0;
+    private long _commandWrittenDatas = 0;
 
     public DataService(ILogger logger, List<DataTemplate> dataTemplates)
     {
@@ -36,11 +44,22 @@ public class DataService : BackgroundService, IDataService
         _simulationCommands = dataTemplates.ToDictionary(template => template.Id, _ => SimulationCommand.Hold);
     }
 
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            HeartbeatLogger();
+            RefreshData();
+            await Task.Delay(TimeSpan.FromSeconds(SERVICE_INTERVAL_SECONDS), stoppingToken);
+        }
+    }
+
     public List<IData> GetGeneratedDatas(List<int> dataTemplateIds)
     {
         ArgumentNullException.ThrowIfNull(dataTemplateIds);
         var requestedIds = dataTemplateIds.ToHashSet();
 
+        Interlocked.Increment(ref _succesPassedDatas);
         lock (_sync)
         {
             return _dataByTemplateId.Values
@@ -56,6 +75,7 @@ public class DataService : BackgroundService, IDataService
         ArgumentNullException.ThrowIfNull(dataTemplateNames);
         var requestedNames = dataTemplateNames.ToHashSet(StringComparer.Ordinal);
 
+        Interlocked.Increment(ref _succesPassedDatas);
         lock (_sync)
         {
             return _dataByTemplateId.Values
@@ -72,11 +92,13 @@ public class DataService : BackgroundService, IDataService
         {
             if (_dataByTemplateId.TryGetValue(dataTemplateId, out var generatedData))
             {
+                Interlocked.Increment(ref _succesPassedDatas);
                 data = CreateSnapshot(generatedData);
                 return true;
             }
         }
 
+        Interlocked.Increment(ref _failedPassedDatas);
         data = null!;
         return false;
     }
@@ -85,6 +107,7 @@ public class DataService : BackgroundService, IDataService
     {
         if (string.IsNullOrWhiteSpace(dataTemplateName))
         {
+            Interlocked.Increment(ref _failedPassedDatas);
             data = null!;
             return false;
         }
@@ -94,11 +117,13 @@ public class DataService : BackgroundService, IDataService
             if (_templateIdsByName.TryGetValue(dataTemplateName, out var templateId) &&
                 _dataByTemplateId.TryGetValue(templateId, out var generatedData))
             {
+                Interlocked.Increment(ref _succesPassedDatas);
                 data = CreateSnapshot(generatedData);
                 return true;
             }
         }
 
+        Interlocked.Increment(ref _failedPassedDatas);
         data = null!;
         return false;
     }
@@ -124,7 +149,8 @@ public class DataService : BackgroundService, IDataService
             }
         }
 
-        _logger.Information(
+        Interlocked.Increment(ref _commandWrittenDatas);
+        _logger.Debug(
             "Simulation command {Command} applied to DataTemplateId {DataTemplateId}",
             command,
             dataTemplateId);
@@ -132,13 +158,17 @@ public class DataService : BackgroundService, IDataService
         return true;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    void HeartbeatLogger()
     {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            RefreshData();
-            await Task.Delay(ServiceLoopDelayMs, stoppingToken);
-        }
+        if (DateTime.UtcNow - _lastStatisticsLogTime < TimeSpan.FromMinutes(STATISTICS_LOG_INTERVAL_MINUTES))
+            return;
+
+        _logger.Information($"DataService heartbeat: Generated Datas: {Interlocked.Read(ref _generatedDatas)}, " +
+            $"Successful Passed Datas: {Interlocked.Read(ref _succesPassedDatas)}, " +
+            $"Failed Passed Datas: {Interlocked.Read(ref _failedPassedDatas)}, " +
+            $"Simulation Commands Written: {Interlocked.Read(ref _commandWrittenDatas)}");
+
+        _lastStatisticsLogTime = DateTime.UtcNow;
     }
 
     private Dictionary<int, Data> GenerateInitialData(IEnumerable<DataTemplate> templates)
@@ -168,6 +198,7 @@ public class DataService : BackgroundService, IDataService
                 data.ReplaceData(nextValue, now);
             }
         }
+        Interlocked.Increment(ref _generatedDatas);
     }
 
     private float GetInitialValue(DataTemplate template)

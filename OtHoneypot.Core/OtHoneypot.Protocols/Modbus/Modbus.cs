@@ -26,6 +26,14 @@ public sealed class Modbus : IProtocolModule
     private readonly HashSet<IPAddress> _activeAlertedAddresses = new();
     private readonly Dictionary<ModbusScheduledWrite, DateTimeOffset> _nextScheduledWriteTimes = new();
 
+    // Statistics for logging and monitoring purposes
+    DateTime _lastStatisticsLogTime = DateTime.UtcNow;
+    private const int STATISTICS_LOG_INTERVAL_MINUTES = 5;
+    private long _succesfulPolls = 0;
+    private long _failedPolls = 0;
+    private long _succesfulCommands = 0;
+    private long _failedCommands = 0;
+
     private IModbusSlave? _slave;
     private TcpListener? _slaveTcpListener;
 
@@ -64,10 +72,14 @@ public sealed class Modbus : IProtocolModule
     {
         var startUpTime = DateTime.UtcNow;
         var devIdToLastPollTimeTask = new Dictionary<int, (DateTime lastPollTime, Task pollTask)>();
-        var devIdToLastCommandTimeTask = new Dictionary<(int deviceId, string scheduledWriteName), (DateTime lastCommandTime, Task commandTask)>();
+        
         var devIdScheduledWrites = GetDeviceIdScheduledWrites();
+        var devIdToLastCommandTimeTask = new Dictionary<(int deviceId, string scheduledWriteName), (DateTime lastCommandTime, Task commandTask)>();
+        
         while (!cancellationToken.IsCancellationRequested)
         {
+            HeartbeatLogger();
+
             // Execute polls
             foreach (var device in _configuration.Devices)
             {
@@ -77,8 +89,13 @@ public sealed class Modbus : IProtocolModule
                 if (device.Polls == null || device.Polls.Count == 0)
                     continue;
 
-                var pollIntervalSeconds = device.PollIntervalS > 0 ? device.PollIntervalS : MIN_READING_INTERVAL_SECONDS;
+                if (CheckIfCommandTaskIsRunningOnDevice(devIdToLastCommandTimeTask, device.UnitId))
+                {
+                    _logger.Debug("Skipping polling for device {Device} (UnitId {UnitId}) because a scheduled write is currently executing.", device.Name, device.UnitId);
+                    continue;
+                }
 
+                var pollIntervalSeconds = device.PollIntervalS > 0 ? device.PollIntervalS : MIN_READING_INTERVAL_SECONDS;
                 if (devIdToLastPollTimeTask.TryGetValue(device.UnitId, out var lastPollInfo))
                 {
                     if (!lastPollInfo.pollTask.IsCompleted)
@@ -96,6 +113,12 @@ public sealed class Modbus : IProtocolModule
             {
                 if (cancellationToken.IsCancellationRequested)
                     break;
+                
+                if(CheckIfPollTaskIsRunningOnDevice(devIdToLastPollTimeTask, (byte)deviceId))
+                {
+                    _logger.Debug("Skipping scheduled write {WriteName} for device (UnitId {UnitId}) because a poll is currently executing.", scheduledWrite.Name, deviceId);
+                    continue;
+                }
 
                 if (scheduledWrite.InitialDelayS > 0 && DateTime.UtcNow - startUpTime < TimeSpan.FromSeconds(scheduledWrite.InitialDelayS))
                     continue;
@@ -120,6 +143,33 @@ public sealed class Modbus : IProtocolModule
             // await Task.Delay(interval, cancellationToken);
             await Task.Delay(TimeSpan.FromSeconds(CHECK_INTERVAL_SECONDS), cancellationToken);
         }
+    }
+
+    void HeartbeatLogger()
+    {
+        if(DateTime.UtcNow - _lastStatisticsLogTime < TimeSpan.FromMinutes(STATISTICS_LOG_INTERVAL_MINUTES))
+            return;
+
+        _logger.Information($"Modbus module {_configuration.Name} heartbeat: Successful Polls: {Interlocked.Read(ref _succesfulPolls)}, " +
+        "Failed Polls: {Interlocked.Read(ref _failedPolls)}, Successful Commands: {Interlocked.Read(ref _succesfulCommands)}, " +
+        "Failed Commands: {Interlocked.Read(ref _failedCommands)}");
+        _lastStatisticsLogTime = DateTime.UtcNow;
+    }
+
+    bool CheckIfPollTaskIsRunningOnDevice(Dictionary<int, (DateTime lastPollTime, Task pollTask)> devIdToLastPollTimeTask, byte deviceId)
+    {
+        if (devIdToLastPollTimeTask == null || devIdToLastPollTimeTask.Count == 0)
+            return false;
+
+        return devIdToLastPollTimeTask.Any(kvp => kvp.Key == deviceId && !kvp.Value.pollTask.IsCompleted);
+    }
+
+    bool CheckIfCommandTaskIsRunningOnDevice(Dictionary<(int deviceId, string scheduledWriteName), (DateTime lastCommandTime, Task commandTask)> devIdToLastCommandTimeTask, byte deviceId)
+    {
+        if (devIdToLastCommandTimeTask == null || devIdToLastCommandTimeTask.Count == 0)
+            return false;
+
+        return devIdToLastCommandTimeTask.Any(kvp => kvp.Key.deviceId == deviceId && !kvp.Value.commandTask.IsCompleted);
     }
 
     private List<(int deviceId, ModbusScheduledWrite scheduledWrite)> GetDeviceIdScheduledWrites()
@@ -174,6 +224,7 @@ public sealed class Modbus : IProtocolModule
         }
         catch (Exception ex)
         {
+            Interlocked.Increment(ref _failedCommands);
             _logger.Error(ex, "Error sending commands to Modbus device {Device} at {IP}:{Port}", device.Name, device.IPAddress, device.Port);
         }
     }
@@ -193,6 +244,8 @@ public sealed class Modbus : IProtocolModule
                 cancellationToken.ThrowIfCancellationRequested();
                 ReadPoll(master, device, poll);
             }
+
+            Interlocked.Increment(ref _succesfulPolls);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -200,6 +253,7 @@ public sealed class Modbus : IProtocolModule
         }
         catch (Exception ex)
         {
+            Interlocked.Increment(ref _failedPolls);
             _logger.Error(ex, "Error polling Modbus device {Device} at {IP}:{Port}", device.Name, device.IPAddress, device.Port);
         }
     }
@@ -215,11 +269,13 @@ public sealed class Modbus : IProtocolModule
                 master.WriteSingleCoil(device.UnitId, scheduledWrite.Address, scheduledWrite.Value != 0);
                 break;
             default:
+                Interlocked.Increment(ref _failedCommands);
                 throw new InvalidOperationException(
                     $"Scheduled write '{scheduledWrite.Name}' must target a HoldingRegister or Coil.");
         }
 
-        _logger.Information(
+        Interlocked.Increment(ref _succesfulCommands);
+        _logger.Debug(
             "{Device} sent scheduled write {WriteName}: {RegisterType} {Address} = {Value}",
             device.Name,
             scheduledWrite.Name,
@@ -261,7 +317,7 @@ public sealed class Modbus : IProtocolModule
                         $"Scheduled write '{scheduledWrite.Name}' must target a HoldingRegister or Coil.");
             }
 
-            _logger.Information(
+            _logger.Debug(
                 "{Device} sent scheduled write {WriteName}: {RegisterType} {Address} = {Value}",
                 device.Name,
                 scheduledWrite.Name,
@@ -304,14 +360,14 @@ public sealed class Modbus : IProtocolModule
                 {
                     var values = master.ReadCoils(device.UnitId, poll.StartAddress, poll.Count);
                     for (int i = 0; i < values.Length; i++)
-                        _logger.Information("{Device} Coil {Address} = {Value}", device.Name, poll.StartAddress + i, values[i]);
+                        _logger.Debug("{Device} Coil {Address} = {Value}", device.Name, poll.StartAddress + i, values[i]);
                     break;
                 }
             case ModbusRegisterType.DiscreteInput:
                 {
                     var values = master.ReadInputs(device.UnitId, poll.StartAddress, poll.Count);
                     for (int i = 0; i < values.Length; i++)
-                        _logger.Information("{Device} DiscreteInput {Address} = {Value}", device.Name, poll.StartAddress + i, values[i]);
+                        _logger.Debug("{Device} DiscreteInput {Address} = {Value}", device.Name, poll.StartAddress + i, values[i]);
                     break;
                 }
             case ModbusRegisterType.InputRegister:
@@ -335,7 +391,7 @@ public sealed class Modbus : IProtocolModule
     {
         foreach (var parsed in ModbusValueParser.Parse(poll.StartAddress, registers, poll.DataType, poll.ByteOrder))
         {
-            _logger.Information(
+            _logger.Debug(
                 "{Device} {Poll} {RegisterType} {Address} {DataType} = {Value}",
                 device.Name,
                 poll.Name,
@@ -375,7 +431,7 @@ public sealed class Modbus : IProtocolModule
         UpdateRegisters();
         InitializeCommandValues();
 
-        _logger.Information("Modbus TCP slave {Name} listening on {Address}:{Port}, UnitId {UnitId}", Name, bindAddress, _configuration.Port, slaveId);
+        _logger.Debug("Modbus TCP slave {Name} listening on {Address}:{Port}, UnitId {UnitId}", Name, bindAddress, _configuration.Port, slaveId);
 
         var listenTask = network.ListenAsync(cancellationToken);
         var updateTask = RunRegisterUpdateLoopAsync(cancellationToken);
@@ -394,7 +450,7 @@ public sealed class Modbus : IProtocolModule
             _slaveTcpListener = null;
             _slave = null;
             _activeAlertedAddresses.Clear();
-            _logger.Information("Modbus slave {Name} stopped", Name);
+            _logger.Warning("Modbus slave {Name} stopped", Name);
         }
     }
 
@@ -511,12 +567,14 @@ public sealed class Modbus : IProtocolModule
                     _logger.Warning("Modbus command {CommandName} targets unknown DataTemplateId {DataTemplateId}", mapping.Name, mapping.DataTemplateId);
                     continue;
                 }
-
-                _logger.Information("Modbus command {CommandName} ({Command}) received at {RegisterType} {Address} with value {Value}",
+                
+                Interlocked.Increment(ref _succesfulCommands);
+                _logger.Debug("Modbus command {CommandName} ({Command}) received at {RegisterType} {Address} with value {Value}",
                     mapping.Name, mapping.Command, mapping.RegisterType, mapping.Address, currentValue);
             }
             catch (Exception ex)
             {
+                Interlocked.Increment(ref _failedCommands);
                 _logger.Error(ex, "Unable to process Modbus command mapping {CommandName} at address {Address}", mapping.Name, mapping.Address);
             }
         }
