@@ -260,7 +260,7 @@ public class DataService : BackgroundService, IDataService
                 newValue = currentValue + NextRandom(0, changeRate); // Add some randomness to the increase
                 break;
             case SimulationCommand.Decrease:
-                newValue = currentValue + NextRandom(-changeRate, 0); // Add some randomness to the decrease
+                newValue = currentValue - NextRandom(0, changeRate); // Add some randomness to the decrease
                 break;
             case SimulationCommand.Hold:
                 newValue = currentValue;
