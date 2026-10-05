@@ -117,22 +117,22 @@ public sealed class Modbus : IProtocolModule
             {
                 if (cancellationToken.IsCancellationRequested)
                     break;
-                
-                if(CheckIfPollTaskIsRunningOnDevice(devIdToLastPollTimeTask, (byte)deviceId))
-                {
-                    _logger.Debug("Skipping scheduled write {WriteName} for device (UnitId {UnitId}) because a poll is currently executing.", scheduledWrite.Name, deviceId);
-                    continue;
-                }
 
                 if (scheduledWrite.InitialDelayS > 0 && DateTime.UtcNow - startUpTime < TimeSpan.FromSeconds(scheduledWrite.InitialDelayS))
                     continue;
-
+                
                 if (devIdToLastCommandTimeTask.TryGetValue((deviceId, scheduledWrite.Name), out var lastCommandInfo))
                 {
                     if (!lastCommandInfo.commandTask.IsCompleted)
                         continue;
                     if (DateTime.UtcNow - lastCommandInfo.lastCommandTime < TimeSpan.FromSeconds(scheduledWrite.RepeatEveryS))
                         continue;
+                }
+
+                if(CheckIfPollTaskIsRunningOnDevice(devIdToLastPollTimeTask, (byte)deviceId))
+                {
+                    _logger.Debug("Skipping scheduled write {WriteName} for device (UnitId {UnitId}) because a poll is currently executing.", scheduledWrite.Name, deviceId);
+                    continue;
                 }
 
                 var device = _configuration.Devices.FirstOrDefault(d => d.UnitId == deviceId);
