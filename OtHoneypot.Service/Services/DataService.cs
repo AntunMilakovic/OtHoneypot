@@ -242,12 +242,37 @@ public class DataService : BackgroundService, IDataService
     {
         var command = _simulationCommands.GetValueOrDefault(templateId, SimulationCommand.Hold);
 
-        return command switch
+        _logger.Debug(
+            "Dynamic simulation for templateId {TemplateId}: CurrentValue={CurrentValue}, Command={Command}, ChangeRate={ChangeRate}, MinValue={MinValue}, MaxValue={MaxValue}",
+            templateId,
+            currentValue,
+            command,
+            changeRate,
+            minValue,
+            maxValue);
+
+        float newValue;
+        switch (command)
         {
-            SimulationCommand.Increase => Math.Clamp(currentValue + changeRate, minValue, maxValue),
-            SimulationCommand.Decrease => Math.Clamp(currentValue - changeRate, minValue, maxValue),
-            _ => currentValue
-        };
+            case SimulationCommand.Increase:
+                newValue = Math.Clamp(currentValue + changeRate, minValue, maxValue);
+                break;
+            case SimulationCommand.Decrease:
+                newValue = Math.Clamp(currentValue - changeRate, minValue, maxValue);
+                break;
+            case SimulationCommand.Hold:
+                newValue = currentValue;
+                break;
+            default:
+                throw new NotSupportedException($"Simulation command {command} is not supported.");
+        }
+
+        _logger.Debug(
+            "Dynamic simulation for templateId {TemplateId}: NewValue={NewValue}",
+            templateId,
+            newValue);
+
+        return newValue;
     }
 
     private float NextRandom(float minValue, float maxValue)
