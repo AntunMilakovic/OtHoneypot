@@ -242,23 +242,25 @@ public class DataService : BackgroundService, IDataService
     {
         var command = _simulationCommands.GetValueOrDefault(templateId, SimulationCommand.Hold);
 
-        _logger.Debug(
-            "Dynamic simulation for templateId {TemplateId}: CurrentValue={CurrentValue}, Command={Command}, ChangeRate={ChangeRate}, MinValue={MinValue}, MaxValue={MaxValue}",
-            templateId,
-            currentValue,
-            command,
-            changeRate,
-            minValue,
-            maxValue);
+        if(command == SimulationCommand.Increase && currentValue >= maxValue)
+        {
+            _simulationCommands[templateId] = SimulationCommand.Hold;
+            command = SimulationCommand.Decrease;
+        }
+        if(command == SimulationCommand.Decrease && currentValue <= minValue)
+        {
+            _simulationCommands[templateId] = SimulationCommand.Hold;
+            command = SimulationCommand.Increase;
+        }
 
         float newValue;
         switch (command)
         {
             case SimulationCommand.Increase:
-                newValue = Math.Clamp(currentValue + changeRate, minValue, maxValue);
+                newValue = currentValue + NextRandom(0, changeRate); // Add some randomness to the increase
                 break;
             case SimulationCommand.Decrease:
-                newValue = Math.Clamp(currentValue - changeRate, minValue, maxValue);
+                newValue = currentValue + NextRandom(-changeRate, 0); // Add some randomness to the decrease
                 break;
             case SimulationCommand.Hold:
                 newValue = currentValue;
