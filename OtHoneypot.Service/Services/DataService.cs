@@ -189,9 +189,7 @@ public class DataService : BackgroundService, IDataService
             foreach (var (templateId, template) in _templatesById)
             {
                 var data = _dataByTemplateId[templateId];
-                var refreshInterval = TimeSpan.FromSeconds(template.Simulation.RefreshRate);
-
-                if (now - data.Timestamp < refreshInterval)
+                if (now - data.Timestamp < TimeSpan.FromSeconds(template.Simulation.RefreshRate))
                     continue;
 
                 var nextValue = GetNextValue(template, data.Value);

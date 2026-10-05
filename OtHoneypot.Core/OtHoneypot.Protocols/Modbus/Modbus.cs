@@ -93,12 +93,6 @@ public sealed class Modbus : IProtocolModule
                 if (device.Polls == null || device.Polls.Count == 0)
                     continue;
 
-                if (CheckIfCommandTaskIsRunningOnDevice(devIdToLastCommandTimeTask, device.UnitId))
-                {
-                    _logger.Debug("Skipping polling for device {Device} (UnitId {UnitId}) because a scheduled write is currently executing.", device.Name, device.UnitId);
-                    continue;
-                }
-
                 var pollIntervalSeconds = device.PollIntervalS > 0 ? device.PollIntervalS : MIN_READING_INTERVAL_SECONDS;
                 if (devIdToLastPollTimeTask.TryGetValue(device.UnitId, out var lastPollInfo))
                 {
@@ -106,6 +100,12 @@ public sealed class Modbus : IProtocolModule
                         continue;
                     if (DateTime.UtcNow - lastPollInfo.lastPollTime < TimeSpan.FromSeconds(pollIntervalSeconds))
                         continue;
+                }
+
+                if (CheckIfCommandTaskIsRunningOnDevice(devIdToLastCommandTimeTask, device.UnitId))
+                {
+                    _logger.Debug("Skipping polling for device {Device} (UnitId {UnitId}) because a scheduled write is currently executing.", device.Name, device.UnitId);
+                    continue;
                 }
 
                 var pollTask = PollDeviceAsync(device, cancellationToken);
@@ -625,6 +625,8 @@ public sealed class Modbus : IProtocolModule
                 _logger.Warning("No generated data found for DataTemplateId {DataTemplateId}", register.DataTemplateId);
                 continue;
             }
+
+            _logger.Debug("Updating Modbus register {Register} at address {Address} with value {Value}", register.Name, register.Address, data.Value);
 
             try
             {
