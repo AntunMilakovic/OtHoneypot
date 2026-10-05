@@ -8,6 +8,9 @@ In root of a solution, run this command:
 
 dotnet publish OtHoneypot.slnx -c Release --self-contained true -r linux-x64  -o ../OtHoneypotPublish
 
+On RaspberryPi
+dotnet publish OtHoneypot.slnx -c Release --self-contained true  -o ../OtHoneypotPublish
+
 
 ## Script to run on linux as service
 

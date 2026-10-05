@@ -269,11 +269,6 @@ public class DataService : BackgroundService, IDataService
                 throw new NotSupportedException($"Simulation command {command} is not supported.");
         }
 
-        _logger.Debug(
-            "Dynamic simulation for templateId {TemplateId}: NewValue={NewValue}",
-            templateId,
-            newValue);
-
         return newValue;
     }
 
