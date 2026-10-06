@@ -569,20 +569,21 @@ public sealed class Modbus : IProtocolModule
         {
             try
             {
-                var currentValue = ReadCommandValue(mapping);
+                // reaches to slave data store and reads the current value of the command mapping
+                var registerValue = ReadCommandValue(mapping);
+                // gets the unique key for the command mapping based on its register type and address
                 var key = GetCommandKey(mapping);
 
                 // _logger.Debug("Modbus command mapping {CommandName} at address {Address} has current value {Value}, with key {Key}", 
                 //     mapping.Name, mapping.Address, currentValue, key);
-                _logger.Debug($"Modbus command mapping {mapping.Name} at address {mapping.Address} has current value {currentValue}, " +
-                    $"with key {key} and {_lastCommandValues[key]} as previous value");
 
-                if (_lastCommandValues.TryGetValue(key, out var previousValue) && previousValue == currentValue)
+                if (_lastCommandValues.TryGetValue(key, out var previousValue) && previousValue == registerValue)
                     continue;
 
-                _lastCommandValues[key] = currentValue;
+                _logger.Debug($"Modbus command mapping {mapping.Name} at address {mapping.Address} has current value {registerValue}, " +
+                    $"with key {key} and {_lastCommandValues[key]} as previous value");
 
-                if (currentValue != mapping.Value)
+                if (registerValue != mapping.Value)
                     continue;
 
                 if (!_dataService.ExecuteSimulationCommand(mapping.DataTemplateId, mapping.Command))
@@ -590,10 +591,12 @@ public sealed class Modbus : IProtocolModule
                     _logger.Warning("Modbus command {CommandName} targets unknown DataTemplateId {DataTemplateId}", mapping.Name, mapping.DataTemplateId);
                     continue;
                 }
-                
+
+                _lastCommandValues[key] = registerValue; 
+
                 Interlocked.Increment(ref _successfulProcessedCommands);
                 _logger.Debug("Modbus command {CommandName} ({Command}) received at {RegisterType} {Address} with value {Value}",
-                    mapping.Name, mapping.Command, mapping.RegisterType, mapping.Address, currentValue);
+                    mapping.Name, mapping.Command, mapping.RegisterType, mapping.Address, registerValue);
             }
             catch (Exception ex)
             {
