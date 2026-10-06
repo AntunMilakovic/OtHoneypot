@@ -572,6 +572,8 @@ public sealed class Modbus : IProtocolModule
                 var currentValue = ReadCommandValue(mapping);
                 var key = GetCommandKey(mapping);
 
+                _logger.Debug("Modbus command mapping {CommandName} at address {Address} has current value {Value}", mapping.Name, mapping.Address, currentValue);
+
                 if (_lastCommandValues.TryGetValue(key, out var previousValue) && previousValue == currentValue)
                     continue;
 
