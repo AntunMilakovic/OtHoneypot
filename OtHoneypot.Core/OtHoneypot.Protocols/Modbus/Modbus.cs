@@ -574,17 +574,14 @@ public sealed class Modbus : IProtocolModule
                 // gets the unique key for the command mapping based on its register type and address
                 var key = GetCommandKey(mapping);
 
-                // _logger.Debug("Modbus command mapping {CommandName} at address {Address} has current value {Value}, with key {Key}", 
-                //     mapping.Name, mapping.Address, currentValue, key);
-
                 if (_lastCommandValues.TryGetValue(key, out var previousValue) && previousValue == registerValue)
+                    continue;
+
+                if (registerValue != mapping.Value)
                     continue;
 
                 _logger.Debug($"Modbus command mapping {mapping.Name} at address {mapping.Address} has current value {registerValue}, " +
                     $"with key {key} and {_lastCommandValues[key]} as previous value");
-
-                if (registerValue != mapping.Value)
-                    continue;
 
                 if (!_dataService.ExecuteSimulationCommand(mapping.DataTemplateId, mapping.Command))
                 {
