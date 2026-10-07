@@ -143,8 +143,6 @@ public sealed class Modbus : IProtocolModule
                 devIdToLastCommandTimeTask[(deviceId, scheduledWrite.Name)] = (DateTime.UtcNow, commandTask);
             }
 
-            // var interval = _configuration.ReadingInterval > 0 ? _configuration.ReadingInterval : MIN_READING_INTERVAL_SECONDS;
-            // await Task.Delay(interval, cancellationToken);
             await Task.Delay(TimeSpan.FromSeconds(CHECK_INTERVAL_SECONDS), cancellationToken);
         }
     }
@@ -631,7 +629,7 @@ public sealed class Modbus : IProtocolModule
                 continue;
             }
 
-            // _logger.Debug("Updating Modbus register {Register} at address {Address} with value {Value}", register.Name, register.Address, data.Value);
+            _logger.Debug("Updating Modbus register {Register} at address {Address} with value {Value}", register.Name, register.Address, data.Value);
 
             try
             {
