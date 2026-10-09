@@ -233,9 +233,44 @@ public class DataService : BackgroundService, IDataService
                 changeRate,
                 simulation.MinValue,
                 simulation.MaxValue),
+            SimulationType.Counter => GenerateCounterValue(template.Id, currentValue, simulation.MinValue, simulation.MaxValue),
             _ => throw new NotSupportedException(
                 $"Simulation type {simulation.Type} for template '{template.Name}' is not implemented.")
         };
+    }
+
+    private float GenerateCounterValue(int templateId, float currentValue, float minValue, float maxValue)
+    {
+        var command = _simulationCommands.GetValueOrDefault(templateId, SimulationCommand.Increase);
+
+        if (command == SimulationCommand.Increase && currentValue >= maxValue)
+            currentValue = minValue; // Wrap around to minValue
+        else if (command == SimulationCommand.Decrease && currentValue <= minValue)
+            currentValue = maxValue; // Wrap around to maxValue
+
+        float newValue;
+        switch (command)
+        {
+            case SimulationCommand.Increase:
+                newValue = currentValue + 1;
+                break;
+            case SimulationCommand.Decrease:
+                newValue = currentValue - 1;
+                break;
+            case SimulationCommand.Hold:
+                newValue = currentValue;
+                break;
+            default:
+                throw new NotSupportedException($"Simulation command {command} is not supported.");
+        }
+
+        _logger.Debug(
+            "Counter simulation for template {TemplateId}: Command={Command}, CurrentValue={CurrentValue}, NewValue={NewValue}",
+            templateId,
+            command,
+            currentValue,
+            newValue);
+        return newValue;
     }
 
     private float GetDynamicValue(int templateId, float currentValue, float changeRate, float minValue, float maxValue)
