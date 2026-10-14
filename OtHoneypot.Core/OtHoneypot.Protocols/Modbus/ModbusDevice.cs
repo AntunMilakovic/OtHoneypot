@@ -22,5 +22,5 @@ public class ModbusDevice
 
     public List<ModbusPollDefinition> Polls { get; set; } = [];
 
-    public List<ModbusScheduledWrite> ScheduledWrites { get; set; } = [];
+    public List<ModbusWrite> Writes { get; set; } = [];
 }

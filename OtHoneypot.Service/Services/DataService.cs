@@ -233,16 +233,15 @@ public class DataService : BackgroundService, IDataService
                 changeRate,
                 simulation.MinValue,
                 simulation.MaxValue),
-            SimulationType.Counter => GenerateCounterValue(template.Id, currentValue, simulation.MinValue, simulation.MaxValue),
+            SimulationType.CounterIncrease => GenerateCounterValue(template.Id, currentValue, simulation.MinValue, simulation.MaxValue, SimulationCommand.Increase),
+            SimulationType.CounterDecrease => GenerateCounterValue(template.Id, currentValue, simulation.MinValue, simulation.MaxValue, SimulationCommand.Decrease),
             _ => throw new NotSupportedException(
                 $"Simulation type {simulation.Type} for template '{template.Name}' is not implemented.")
         };
     }
 
-    private float GenerateCounterValue(int templateId, float currentValue, float minValue, float maxValue)
+    private float GenerateCounterValue(int templateId, float currentValue, float minValue, float maxValue, SimulationCommand command)
     {
-        var command = _simulationCommands.GetValueOrDefault(templateId, SimulationCommand.Increase);
-
         if (command == SimulationCommand.Increase && currentValue >= maxValue)
             currentValue = minValue; // Wrap around to minValue
         else if (command == SimulationCommand.Decrease && currentValue <= minValue)

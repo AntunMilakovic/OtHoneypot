@@ -7,5 +7,6 @@ public enum SimulationType
     RandomWalk,
     Dynamic,
     Sine,
-    Counter
+    CounterIncrease,
+    CounterDecrease
 }
