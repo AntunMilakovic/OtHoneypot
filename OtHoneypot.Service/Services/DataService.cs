@@ -61,7 +61,7 @@ public class DataService : BackgroundService, IDataService
             }
             catch (Exception ex)
             {
-                _logger.Error("Error in data service while refreshing data!", ex);
+                _logger.Error(ex, "Error in data service while refreshing data!");
             }
 
             await Task.Delay(TimeSpan.FromSeconds(SERVICE_INTERVAL_SECONDS), stoppingToken);
@@ -406,10 +406,13 @@ public class DataService : BackgroundService, IDataService
             if (template.Simulation == null)
                 throw new InvalidOperationException($"DataTemplate '{template.Name}' ({template.Id}) has no Simulation configuration.");
 
-            if (template.Simulation.MinValue > template.Simulation.MaxValue)
+            if(template.Simulation.Type != SimulationType.Static && template.Simulation.Type != SimulationType.Calculated)
             {
-                throw new InvalidOperationException(
-                    $"DataTemplate '{template.Name}' ({template.Id}) has MinValue {template.Simulation.MinValue} greater than MaxValue {template.Simulation.MaxValue}.");
+                if (template.Simulation.MinValue > template.Simulation.MaxValue)
+                {
+                    throw new InvalidOperationException(
+                        $"DataTemplate '{template.Name}' ({template.Id}) has MinValue {template.Simulation.MinValue} greater than MaxValue {template.Simulation.MaxValue}.");
+                }
             }
 
             if (template.Simulation.RefreshRate <= 0)
