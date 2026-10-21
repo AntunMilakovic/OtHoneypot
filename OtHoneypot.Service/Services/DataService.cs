@@ -8,12 +8,18 @@ using OtHoneypot.Core.Data;
 using OtHoneypot.Core.Enums;
 using OtHoneypot.Core.Interfaces;
 using Serilog;
+using NCalc;
+using System.Text.RegularExpressions;
+using System.Data;
 
 namespace OtHoneypot.Service;
 
 public class DataService : BackgroundService, IDataService
 {
     private const int SERVICE_INTERVAL_SECONDS = 1;
+
+    private const string FORMULA_PLACEHOLDER = "dt";
+    private const string REGEX_FORMULA_PATTERN = @"\b(dt\d+)\b";
 
     private readonly ILogger _logger;
     private readonly Dictionary<int, DataTemplate> _templatesById;
@@ -49,7 +55,15 @@ public class DataService : BackgroundService, IDataService
         while (!stoppingToken.IsCancellationRequested)
         {
             HeartbeatLogger();
-            RefreshData();
+            try
+            {
+                RefreshData();
+            }
+            catch (Exception ex)
+            {
+                _logger.Error("Error in data service while refreshing data!", ex);
+            }
+
             await Task.Delay(TimeSpan.FromSeconds(SERVICE_INTERVAL_SECONDS), stoppingToken);
         }
     }
@@ -209,6 +223,7 @@ public class DataService : BackgroundService, IDataService
             SimulationType.Random => NextRandom(simulation.MinValue, simulation.MaxValue),
             SimulationType.RandomWalk => NextRandom(simulation.MinValue, simulation.MaxValue),
             SimulationType.Dynamic => simulation.MinValue,
+            SimulationType.Calculated => 0,
             _ => throw new NotSupportedException(
                 $"Simulation type {simulation.Type} for template '{template.Name}' is not implemented.")
         };
@@ -235,17 +250,64 @@ public class DataService : BackgroundService, IDataService
                 simulation.MaxValue),
             SimulationType.CounterIncrease => GenerateCounterValue(template.Id, currentValue, simulation.MinValue, simulation.MaxValue, SimulationCommand.Increase),
             SimulationType.CounterDecrease => GenerateCounterValue(template.Id, currentValue, simulation.MinValue, simulation.MaxValue, SimulationCommand.Decrease),
+            SimulationType.Calculated => CalculateNextValue(template, currentValue),
             _ => throw new NotSupportedException(
                 $"Simulation type {simulation.Type} for template '{template.Name}' is not implemented.")
         };
     }
 
+    private float CalculateNextValue(DataTemplate template, float currentValue)
+    {
+        if (template.Simulation.Formula.IsWhiteSpace())
+            throw new FormatException($"Bad formula for data template with id {template.Id}!");
+
+        var formula = template.Simulation.Formula;
+        var nCalcExpression = new Expression(formula);
+        var regexMatches = Regex.Matches(template.Simulation.Formula, REGEX_FORMULA_PATTERN);
+
+        if (regexMatches.Count() == 0)
+            throw new FormatException($"There is no regex matches in formula {template.Simulation.Formula} on template with id {template.Id}!");
+
+        foreach (var match in regexMatches)
+        {
+            var matchId = match.ToString().Substring(2);
+            int varId;
+
+            if (!int.TryParse(matchId, out varId))
+                throw new FormatException("Unable to convert number from formula to integer to" +
+                $"find variable! For template Id {template.Id} and match {match}");
+
+            bool foundData = GetGeneratedData(varId, out var data);
+
+            var dataValue = foundData ? data.Value : 0; 
+            
+            if (foundData)
+            {
+                _logger.Debug($"Data with template id {template.Id}, value {dataValue}!");
+                formula = Regex.Replace(formula, $@"\bdt{varId}\b", dataValue.ToString());
+            }
+            else
+            {
+                _logger.Debug($"Data with template id {template.Id} not found, value set to {dataValue}!");
+                formula = Regex.Replace(formula, $@"\bdt{varId}\b", dataValue.ToString());
+                // throw new DataException($"Didn't find generated data for {varId}!");
+            }
+
+            nCalcExpression.Parameters[FORMULA_PLACEHOLDER + varId] = data.Value;
+        }
+
+        var result = (float)nCalcExpression.Evaluate();
+        _logger.Debug($"Result for formula {template.Simulation.Formula} with dataTemplateId {template.Id} is {formula} = {result}");
+
+        return result;
+    }
+
     private float GenerateCounterValue(int templateId, float currentValue, float minValue, float maxValue, SimulationCommand command)
     {
         if (command == SimulationCommand.Increase && currentValue >= maxValue)
-            currentValue = minValue; // Wrap around to minValue
+            currentValue = minValue; // Reset counter to minValue
         else if (command == SimulationCommand.Decrease && currentValue <= minValue)
-            currentValue = maxValue; // Wrap around to maxValue
+            currentValue = maxValue; // Reset counter to maxValue
 
         float newValue;
         switch (command)
@@ -276,9 +338,9 @@ public class DataService : BackgroundService, IDataService
     {
         var command = _simulationCommands.GetValueOrDefault(templateId, SimulationCommand.Hold);
 
-        if(command == SimulationCommand.Increase && currentValue >= maxValue)
+        if (command == SimulationCommand.Increase && currentValue >= maxValue)
             command = SimulationCommand.Decrease;
-        if(command == SimulationCommand.Decrease && currentValue <= minValue)
+        if (command == SimulationCommand.Decrease && currentValue <= minValue)
             command = SimulationCommand.Increase;
 
         float newValue;

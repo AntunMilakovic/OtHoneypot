@@ -8,5 +8,6 @@ public enum SimulationType
     Dynamic,
     Sine,
     CounterIncrease,
-    CounterDecrease
+    CounterDecrease,
+    Calculated
 }

@@ -11,6 +11,4 @@ public interface IData
     public int TemplateId { get; set; }
 
     public DateTime Timestamp { get; set; }
-
-    
 }

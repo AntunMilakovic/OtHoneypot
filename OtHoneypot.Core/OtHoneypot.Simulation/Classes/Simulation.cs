@@ -15,4 +15,6 @@ public class Simulation
 
     public float? ValueChangeRate { get; set; }
     public SimulationType Type { get; set; }
+
+    public string Formula { get; set; } = "";
 }
