@@ -296,7 +296,7 @@ public class DataService : BackgroundService, IDataService
             nCalcExpression.Parameters[FORMULA_PLACEHOLDER + varId] = data.Value;
         }
 
-        var result = (float)nCalcExpression.Evaluate();
+        var result = Convert.ToSingle(nCalcExpression.Evaluate());
         _logger.Debug($"Result for formula {template.Simulation.Formula} with dataTemplateId {template.Id} is {formula} = {result}");
 
         return result;
