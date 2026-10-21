@@ -716,7 +716,7 @@ public sealed class Modbus : IProtocolModule
                 continue;
             }
 
-            _logger.Debug("Updating Modbus register {Register} at address {Address} with value {Value}", register.Name, register.Address, data.Value);
+            _logger.Verbose("Updating Modbus register {Register} at address {Address} with value {Value}", register.Name, register.Address, data.Value);
 
             try
             {
