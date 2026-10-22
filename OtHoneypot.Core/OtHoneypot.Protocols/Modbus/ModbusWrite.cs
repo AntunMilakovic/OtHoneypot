@@ -52,4 +52,25 @@ public class ModbusWrite
     /// Number of seconds.
     /// </summary>
     public int? RepeatEveryS { get; set; }
+
+    public override bool Equals(object? obj)
+    {
+        var item = obj as ModbusWrite;
+
+        if (item == null)
+            return false;
+        
+        if(item.Address != this.Address)
+            return false;
+        
+        if(item.Name != this.Name)
+            return false;
+        
+        if(item.DependedRegisterAddress != this.DependedRegisterAddress)
+            return false;
+        
+        if(item.Value != this.Value)
+            return false;
+        return base.Equals(obj);
+    }
 }
