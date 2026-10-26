@@ -223,6 +223,8 @@ public class DataService : BackgroundService, IDataService
             SimulationType.Random => NextRandom(simulation.MinValue, simulation.MaxValue),
             SimulationType.RandomWalk => NextRandom(simulation.MinValue, simulation.MaxValue),
             SimulationType.Dynamic => simulation.MinValue,
+            SimulationType.CounterIncrease => simulation.MinValue,
+            SimulationType.CounterDecrease => simulation.MaxValue,
             SimulationType.Calculated => 0,
             _ => throw new NotSupportedException(
                 $"Simulation type {simulation.Type} for template '{template.Name}' is not implemented.")
