@@ -30,6 +30,8 @@ public sealed class Modbus : IProtocolModule
 
     private Dictionary<int, List<ModbusWrite>> _devIdToCommandWrite = new Dictionary<int, List<ModbusWrite>>();
 
+    // private Dictionary<int, List<(int address, float value, DateTime firstOccurence)>> _devIdToDependedValues = new Dictionary<int, List<(int address, float value, DateTime firstOccurence)>>();
+
     // Statistics for logging and monitoring purposes
     DateTime _lastStatisticsLogTime = DateTime.UtcNow;
     DateTime _lastStatisticsSlaveLogTime = DateTime.UtcNow;
@@ -152,13 +154,13 @@ public sealed class Modbus : IProtocolModule
             // Execute value dependent commands
             foreach (var (deviceId, writeCommands) in _devIdToCommandWrite.ToList())
             {
-                if(writeCommands == null || writeCommands.Count() == 0)
+                if (writeCommands == null || writeCommands.Count() == 0)
                     continue;
-                
-                foreach(var writeCommand in writeCommands)
+
+                foreach (var writeCommand in writeCommands)
                 {
                     if (cancellationToken.IsCancellationRequested)
-                    break;
+                        break;
 
                     if (CheckIfPollTaskIsRunningOnDevice(devIdToLastPollTimeTask, (byte)deviceId))
                     {
@@ -178,16 +180,15 @@ public sealed class Modbus : IProtocolModule
 
                     var commandTask = CommandDeviceAsync(device, writeCommand, cancellationToken);
                     var newCommandWrites = new List<ModbusWrite>();
-                    foreach(var leftWrite in writeCommands)
+                    foreach (var leftWrite in writeCommands)
                     {
-                        if(writeCommand.Equals(leftWrite))
+                        if (writeCommand.Equals(leftWrite))
                             continue;
 
                         newCommandWrites.Add(leftWrite);
                     }
                     _devIdToCommandWrite[deviceId] = newCommandWrites;
                 }
-                
             }
 
             await Task.Delay(TimeSpan.FromSeconds(CHECK_INTERVAL_SECONDS), cancellationToken);
@@ -444,27 +445,7 @@ public sealed class Modbus : IProtocolModule
 
                         foreach (var write in dependedWrites)
                         {
-                            var addWriteCommand = false;
-                            if (write.BiggerThanValue != null &&
-                                write.BiggerThanValue == 0 && values[i] == true)
-                                addWriteCommand = true;
-                            else if (write.SmallerThanValue != null &&
-                                write.SmallerThanValue == 1 && values[i] == false)
-                                addWriteCommand = true;
-
-                            if (!addWriteCommand)
-                                continue;
-
-                            if (!_devIdToCommandWrite.ContainsKey(device.UnitId))
-                            {
-                                _devIdToCommandWrite[device.UnitId] = new List<ModbusWrite>()
-                                {
-                                    write
-                                };
-                                continue;
-                            }
-
-                            _devIdToCommandWrite[device.UnitId].Add(write);
+                            CheckSimpleValueAndAddWriteToSendQueue(write, values[i], device.UnitId);
                         }
                     }
                     break;
@@ -479,29 +460,11 @@ public sealed class Modbus : IProtocolModule
                         if (dependedWrites == null || dependedWrites.Count() == 0)
                             continue;
 
+                        // _devIdToDependedValues[device.UnitId].Add(new(poll.StartAddress, Convert.ToSingle(values[i]), DateTime.UtcNow));
+
                         foreach (var write in dependedWrites)
                         {
-                            var addWriteCommand = false;
-                            if (write.BiggerThanValue != null &&
-                                write.BiggerThanValue == 0 && values[i] == true)
-                                addWriteCommand = true;
-                            else if (write.SmallerThanValue != null &&
-                                write.SmallerThanValue == 1 && values[i] == false)
-                                addWriteCommand = true;
-
-                            if (!addWriteCommand)
-                                continue;
-
-                            if (!_devIdToCommandWrite.ContainsKey(device.UnitId))
-                            {
-                                _devIdToCommandWrite[device.UnitId] = new List<ModbusWrite>()
-                                {
-                                    write
-                                };
-                                continue;
-                            }
-
-                            _devIdToCommandWrite[device.UnitId].Add(write);
+                            CheckSimpleValueAndAddWriteToSendQueue(write, values[i], device.UnitId);
                         }
                     }
                     break;
@@ -523,44 +486,38 @@ public sealed class Modbus : IProtocolModule
         }
     }
 
+    private void CheckSimpleValueAndAddWriteToSendQueue(ModbusWrite write, bool value, int deviceUnitId)
+    {
+        var addWriteCommand = false;
+        if (write.BiggerThanValue != null &&
+            write.BiggerThanValue == 0 && value == true)
+            addWriteCommand = true;
+        else if (write.SmallerThanValue != null &&
+            write.SmallerThanValue == 1 && value == false)
+            addWriteCommand = true;
+
+        if (!addWriteCommand)
+            return;
+
+        if (!_devIdToCommandWrite.ContainsKey(deviceUnitId))
+        {
+            _devIdToCommandWrite[deviceUnitId] = new List<ModbusWrite>()
+            {
+                write
+            };
+            return;
+        }
+
+        _devIdToCommandWrite[deviceUnitId].Add(write);
+    }
+
     private void LogParsedRegisterValues(ModbusDevice device, ModbusPollDefinition poll, ushort[] registers)
     {
         var modbusWrites = device.Writes.Where(w => w.Type == WriteType.ValueDependent);
         foreach (var parsed in ModbusValueParser.Parse(poll.StartAddress, registers, poll.DataType, poll.ByteOrder))
         {
             var parsedValue = Convert.ToSingle(parsed.Value);
-            // send the parsed value to check method
-            var dependedWrites = modbusWrites.Where(mW => mW.DependedRegisterAddress == parsed.Address && mW.DependedRegisterType == poll.RegisterType).ToList();
-            foreach (var write in dependedWrites)
-            {
-                bool addWriteOnList = false;
-                if (write.SmallerThanValue != null && parsedValue <= write.SmallerThanValue)
-                {
-                    addWriteOnList = true;
-                    _logger.Debug($"Register {poll.StartAddress} value {parsedValue} is " +
-                        $"smaller than set value {write.SmallerThanValue}, will send command {write.Name}!");
-                }
-                else if (write.BiggerThanValue != null && parsedValue >= write.BiggerThanValue)
-                {
-                    addWriteOnList = true;
-                    _logger.Debug($"Register {poll.StartAddress} value {parsedValue} is " +
-                        $"bigger than set value {write.SmallerThanValue}, will send command {write.Name}!");
-                }
 
-                if (!addWriteOnList)
-                    continue;
-
-                if (!_devIdToCommandWrite.ContainsKey(device.UnitId))
-                {
-                    _devIdToCommandWrite[device.UnitId] = new List<ModbusWrite>()
-                        {
-                            write
-                        };
-                    continue;
-                }
-
-                _devIdToCommandWrite[device.UnitId].Add(write);
-            }
             _logger.Debug(
                 "{Device} {Poll} {RegisterType} {Address} {DataType} = {Value}",
                 device.Name,
@@ -569,6 +526,48 @@ public sealed class Modbus : IProtocolModule
                 parsed.Address,
                 parsed.DataType,
                 parsed.Value);
+
+            var dependedWrites = modbusWrites.Where(mW => mW.DependedRegisterAddress == parsed.Address &&
+                mW.DependedRegisterType == poll.RegisterType).ToList();
+
+            if (dependedWrites == null || dependedWrites.Count() == 0)
+                continue;
+
+            AddWriteToSendQueue(dependedWrites, parsedValue, poll, device.UnitId);
+        }
+    }
+
+    private void AddWriteToSendQueue(List<ModbusWrite> dependedWrites, float parsedValue, ModbusPollDefinition poll, int deviceUnitId)
+    {
+        foreach (var write in dependedWrites)
+        {
+            bool addWriteOnList = false;
+            if (write.SmallerThanValue != null && parsedValue <= write.SmallerThanValue)
+            {
+                addWriteOnList = true;
+                _logger.Debug($"Register {poll.StartAddress} value {parsedValue} is " +
+                    $"smaller than set value {write.SmallerThanValue}, will send command {write.Name}!");
+            }
+            else if (write.BiggerThanValue != null && parsedValue >= write.BiggerThanValue)
+            {
+                addWriteOnList = true;
+                _logger.Debug($"Register {poll.StartAddress} value {parsedValue} is " +
+                    $"bigger than set value {write.SmallerThanValue}, will send command {write.Name}!");
+            }
+
+            if (!addWriteOnList)
+                continue;
+
+            if (!_devIdToCommandWrite.ContainsKey(deviceUnitId))
+            {
+                _devIdToCommandWrite[deviceUnitId] = new List<ModbusWrite>()
+                {
+                    write
+                };
+                continue;
+            }
+
+            _devIdToCommandWrite[deviceUnitId].Add(write);
         }
     }
 

@@ -338,7 +338,7 @@ public class DataService : BackgroundService, IDataService
 
     private float GetDynamicValue(int templateId, float currentValue, float changeRate, float minValue, float maxValue)
     {
-        var command = _simulationCommands.GetValueOrDefault(templateId, SimulationCommand.Hold);
+        var command = _simulationCommands.GetValueOrDefault(templateId, SimulationCommand.Decrease);
 
         if (command == SimulationCommand.Increase && currentValue >= maxValue)
             command = SimulationCommand.Decrease;
