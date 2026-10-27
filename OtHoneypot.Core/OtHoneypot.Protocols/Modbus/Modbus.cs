@@ -30,11 +30,14 @@ public sealed class Modbus : IProtocolModule
 
     private Dictionary<int, List<ModbusWrite>> _devIdToCommandWrite = new Dictionary<int, List<ModbusWrite>>();
 
+
     // private Dictionary<int, List<(int address, float value, DateTime firstOccurence)>> _devIdToDependedValues = new Dictionary<int, List<(int address, float value, DateTime firstOccurence)>>();
 
     // Statistics for logging and monitoring purposes
     DateTime _lastStatisticsLogTime = DateTime.UtcNow;
     DateTime _lastStatisticsSlaveLogTime = DateTime.UtcNow;
+
+    private Dictionary<int, bool> unitIdState = new Dictionary<int, bool>();
     private const int STATISTICS_LOG_INTERVAL_MINUTES = 5;
     private long _successfulPolls = 0;
     private long _failedPolls = 0;
@@ -205,6 +208,20 @@ public sealed class Modbus : IProtocolModule
             $"Failed polls: {Interlocked.Read(ref _failedPolls)}, Successful writes: {Interlocked.Read(ref _successfulWrites)}, " +
             $"Failed writes: {Interlocked.Read(ref _failedWrites)}");
 
+        
+        if(unitIdState.Values.Any(v => v == false))
+        {
+            foreach(var unit in unitIdState.Where(kvp => kvp.Value == false))
+            {
+                var devIp = _configuration.Devices.First(d => d.UnitId == unit.Key).IPAddress;
+                _logger.Information($"Device with unit id {unit.Key} and ip address {devIp} is not answering!");
+            }
+        }
+        else
+        {
+            _logger.Information("Every slave is responding! Alles gut!");
+        }
+
         _lastStatisticsLogTime = DateTime.UtcNow;
     }
 
@@ -308,15 +325,22 @@ public sealed class Modbus : IProtocolModule
                 cancellationToken.ThrowIfCancellationRequested();
                 ReadPoll(master, device, poll);
             }
-
+            
+            unitIdState[device.UnitId] = true;
             Interlocked.Increment(ref _successfulPolls);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             return;
         }
+        catch (SocketException ex)
+        {
+            unitIdState[device.UnitId] = false;
+            _logger.Error(ex, "Error polling Modbus device {Device} at {IP}:{Port}", device.Name, device.IPAddress, device.Port);
+        }
         catch (Exception ex)
         {
+            unitIdState[device.UnitId] = false;
             Interlocked.Increment(ref _failedPolls);
             _logger.Error(ex, "Error polling Modbus device {Device} at {IP}:{Port}", device.Name, device.IPAddress, device.Port);
         }
